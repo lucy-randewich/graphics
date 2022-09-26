@@ -1,5 +1,7 @@
 #include <CanvasTriangle.h>
 #include <DrawingWindow.h>
+#include <glm/glm.hpp>
+#include "glm/ext.hpp"
 #include <Utils.h>
 #include <fstream>
 #include <vector>
@@ -9,12 +11,27 @@
 
 using namespace std;
 
-vector<float> interpolateSingleFloats(float from, float to, int numberOfValue) {
+
+vector<float> interpolateSingleFloats(float from, float to, int numberOfValues) {
     vector<float> vec;
-    float increment = (to-from)/(numberOfValue-1);
-    for(size_t i = 0; i < numberOfValue; i++){
+    float increment = (to-from)/(numberOfValues-1);
+    for(size_t i = 0; i < numberOfValues; i++){
         vec.push_back(from);
         from += increment;
+    }
+    return vec;
+}
+
+vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
+    vector<glm::vec3> vec;
+
+    vector<float> val1 = interpolateSingleFloats(from[0], to[0], numberOfValues);
+    vector<float> val2 = interpolateSingleFloats(from[1], to[1], numberOfValues);
+    vector<float> val3 = interpolateSingleFloats(from[2], to[2], numberOfValues);
+
+    for(size_t i=0; i<numberOfValues; i++) {
+        glm::vec3 tmp(val1[i], val2[i], val3[i]);
+        vec.push_back(tmp);
     }
     return vec;
 }
@@ -49,6 +66,13 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
+
+    glm::vec3 from(1, 4, 9.2);
+    glm::vec3 to(4, 1, 9.8);
+    vector<glm::vec3> result = interpolateThreeElementValues(from, to, 4);
+    for(size_t i=0; i<result.size(); i++) {
+        std::cout << glm::to_string(result[i]);
+    }
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !

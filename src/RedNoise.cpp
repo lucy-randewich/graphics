@@ -1,5 +1,7 @@
 #include <CanvasTriangle.h>
 #include <DrawingWindow.h>
+#include <CanvasPoint.h>
+#include <Colour.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <Utils.h>
@@ -76,6 +78,19 @@ void drawColourGradient(DrawingWindow &window){
     }
 }
 
+void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
+    float xDiff = to.x - from.x;
+    float yDiff = to.y - from.y;
+    float numberOfSteps = max(abs(xDiff), abs(yDiff));
+    float xStepSize = xDiff/numberOfSteps;
+    float yStepSize = yDiff/numberOfSteps;
+    for (float i=0.0; i<numberOfSteps; i++) {
+        float x = from.x + (xStepSize * i);
+        float y = from.y + (yStepSize * i);
+        window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+    }
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -93,17 +108,16 @@ int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
 
-    glm::vec3 from(1, 4, 9.2);
-    glm::vec3 to(4, 1, 9.8);
-    vector<glm::vec3> result = interpolateThreeElementValues(from, to, 4);
-    for(size_t i=0; i<result.size(); i++) {
-        std::cout << glm::to_string(result[i]);
-    }
-
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		drawColourGradient(window);
+
+        CanvasPoint from(window.width/2, 0);
+        CanvasPoint to(window.width/2, window.height);
+        Colour colour(255, 0, 0);
+        drawLine(window, from, to, colour);
+        //drawColourGradient(window);
+
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}

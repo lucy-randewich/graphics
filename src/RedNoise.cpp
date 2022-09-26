@@ -36,7 +36,7 @@ vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, in
     return vec;
 }
 
-void draw(DrawingWindow &window) {
+void drawGreyGradient(DrawingWindow &window) {
 	window.clearPixels();
     vector<float> widthPixelValues = interpolateSingleFloats(255, 0, window.width);
     for (size_t y = 0; y < window.height; y++) {
@@ -48,6 +48,32 @@ void draw(DrawingWindow &window) {
 			window.setPixelColour(x, y, colour);
 		}
 	}
+}
+
+void drawColourGradient(DrawingWindow &window){
+    window.clearPixels();
+
+    glm::vec3 topLeft(255, 0, 0);        // red
+    glm::vec3 topRight(0, 0, 255);       // blue
+    glm::vec3 bottomRight(0, 255, 0);    // green
+    glm::vec3 bottomLeft(255, 255, 0);   // yellow
+
+    vector<glm::vec3> redToYellow = interpolateThreeElementValues(topLeft, bottomLeft, window.height);
+    vector<glm::vec3> blueToGreen = interpolateThreeElementValues(topRight, bottomRight, window.height);
+
+    for (size_t y = 0; y < window.height; y++) {
+        vector<glm::vec3> rowVals = interpolateThreeElementValues(redToYellow[y], blueToGreen[y], window.width);
+        for (size_t x = 0; x < window.width; x++) {
+            glm::vec3 thisRowVals = rowVals[x];
+
+            float red = thisRowVals[0];
+            float green = thisRowVals[1];
+            float blue = thisRowVals[2];
+            uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+            window.setPixelColour(x, y, colour);
+
+        }
+    }
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
@@ -77,7 +103,7 @@ int main(int argc, char *argv[]) {
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		draw(window);
+		drawColourGradient(window);
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}

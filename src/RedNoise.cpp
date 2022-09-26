@@ -2,6 +2,7 @@
 #include <DrawingWindow.h>
 #include <CanvasPoint.h>
 #include <Colour.h>
+#include <CanvasTriangle.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <Utils.h>
@@ -91,12 +92,23 @@ void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour co
     }
 }
 
+void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colour) {
+    drawLine(window, triangle.v0(), triangle.v1(), colour);
+    drawLine(window, triangle.v1(), triangle.v2(), colour);
+    drawLine(window, triangle.v0(), triangle.v2(), colour);
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
 		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
 		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
 		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
+        else if (event.key.keysym.sym == SDLK_u) {
+            CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
+            Colour colour(rand()%256, rand()%256, rand()%256);
+            strokedTriangle(window, triangle, colour);
+        }
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
@@ -114,9 +126,11 @@ int main(int argc, char *argv[]) {
 
         CanvasPoint from(window.width/2, 0);
         CanvasPoint to(window.width/2, window.height);
-        Colour colour(255, 0, 0);
-        drawLine(window, from, to, colour);
+        Colour colour(0, 255, 0);
+        //drawLine(window, from, to, colour);
         //drawColourGradient(window);
+        CanvasTriangle triangle(CanvasPoint(10, 10), CanvasPoint(10, 200), CanvasPoint(30, 100));
+        strokedTriangle(window, triangle, colour);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

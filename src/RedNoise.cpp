@@ -98,6 +98,54 @@ void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colo
     drawLine(window, triangle.v0(), triangle.v2(), colour);
 }
 
+
+void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colour) {
+    // Sort vertices into top, middle, bottom
+    if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
+    if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
+    if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
+    cout << triangle << endl;
+
+    // Divide triangle in half horizontally - find "extra" point
+    int extraY = triangle.v1().y;
+    int a_x = triangle.v0().x;
+    int a_y = triangle.v0().y;
+    int c_x = triangle.v2().x;
+    int c_y = triangle.v2().y;
+    int b_x = triangle.v1().x;
+    int b_y = triangle.v1().y;
+
+    float ratio = (float) (extraY-a_y)/(float) (c_y-a_y);
+    float extraX = (c_x - a_x) * ratio + a_x;
+
+    // Top triangle
+    for(int y = a_y; y < extraY; y++){
+        float ratioi = (float) (y-a_y)/(float) (c_y-a_y);
+        float i = (c_x - a_x) * ratioi + a_x;
+
+        float ratioj = (float) (y-a_y)/(float) (b_y-a_y);
+        float j = (b_x - a_x) * ratioj + a_x;
+
+        drawLine(window, CanvasPoint(i, y), CanvasPoint(j, y), colour);
+    }
+
+    // Bottom triangle
+    for(int y = extraY; y < c_y; y++){
+        float ratioi = (float) (y-a_y)/(float) (c_y-a_y);
+        float i = (c_x - a_x) * ratioi + a_x;
+
+        float ratioj = (float) (y-b_y)/(float) (c_y-b_y);
+        float j = (c_x - b_x) * ratioj + b_x;
+
+        drawLine(window, CanvasPoint(i, y), CanvasPoint(j, y), colour);
+    }
+
+
+
+    // Draw white border
+    strokedTriangle(window, triangle, Colour(255, 255, 255));
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -108,6 +156,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
             CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
             Colour colour(rand()%256, rand()%256, rand()%256);
             strokedTriangle(window, triangle, colour);
+        }else if (event.key.keysym.sym == SDLK_f) {
+            CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
+            Colour colour(rand()%256, rand()%256, rand()%256);
+            filledTriangle(window, triangle, colour);
         }
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -130,7 +182,8 @@ int main(int argc, char *argv[]) {
         //drawLine(window, from, to, colour);
         //drawColourGradient(window);
         CanvasTriangle triangle(CanvasPoint(10, 10), CanvasPoint(10, 200), CanvasPoint(30, 100));
-        strokedTriangle(window, triangle, colour);
+        //strokedTriangle(window, triangle, colour);
+        filledTriangle(window, triangle, colour);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

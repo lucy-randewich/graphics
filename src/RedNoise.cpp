@@ -3,6 +3,7 @@
 #include <CanvasPoint.h>
 #include <Colour.h>
 #include <CanvasTriangle.h>
+#include <TextureMap.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <Utils.h>
@@ -80,11 +81,9 @@ void drawColourGradient(DrawingWindow &window){
 }
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
-    float xDiff = to.x - from.x;
-    float yDiff = to.y - from.y;
-    float numberOfSteps = max(abs(xDiff), abs(yDiff));
-    float xStepSize = xDiff/numberOfSteps;
-    float yStepSize = yDiff/numberOfSteps;
+    float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
+    float xStepSize = (to.x - from.x)/numberOfSteps;
+    float yStepSize = (to.y - from.y)/numberOfSteps;
     for (float i=0.0; i<numberOfSteps; i++) {
         float x = from.x + (xStepSize * i);
         float y = from.y + (yStepSize * i);
@@ -98,13 +97,39 @@ void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colo
     drawLine(window, triangle.v0(), triangle.v2(), colour);
 }
 
+vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float numberOfSteps){
+    vector<CanvasPoint> linePoints;
+    float xDiff = to.x - from.x;
+    float yDiff = to.y - from.y;
+    float xStepSize = xDiff/numberOfSteps;
+    float yStepSize = yDiff/numberOfSteps;
+    for (float i=0.0; i<numberOfSteps; i++) {
+        float x = from.x + (xStepSize * i);
+        float y = from.y + (yStepSize * i);
+        linePoints.push_back(CanvasPoint(round(x), round(y)));
+    }
+    return linePoints;
+}
+
+vector<CanvasPoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfSteps){
+    vector<CanvasPoint> linePoints;
+    float xDiff = to.x - from.x;
+    float yDiff = to.y - from.y;
+    float xStepSize = xDiff/numberOfSteps;
+    float yStepSize = yDiff/numberOfSteps;
+    for (float i=0.0; i<numberOfSteps; i++) {
+        float x = from.x + (xStepSize * i);
+        float y = from.y + (yStepSize * i);
+        linePoints.push_back(CanvasPoint(round(x), round(y)));
+    }
+    return linePoints;
+}
 
 void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colour) {
     // Sort vertices into top, middle, bottom
     if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
     if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
     if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
-    cout << triangle << endl;
 
     // Divide triangle in half horizontally - find "extra" point
     int extraY = triangle.v1().y;
@@ -112,35 +137,129 @@ void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colou
     int a_y = triangle.v0().y;
     int c_x = triangle.v2().x;
     int c_y = triangle.v2().y;
-    int b_x = triangle.v1().x;
-    int b_y = triangle.v1().y;
 
     float ratio = (float) (extraY-a_y)/(float) (c_y-a_y);
     float extraX = (c_x - a_x) * ratio + a_x;
 
     // Top triangle
-    for(int y = a_y; y < extraY; y++){
-        float ratioi = (float) (y-a_y)/(float) (c_y-a_y);
-        float i = (c_x - a_x) * ratioi + a_x;
-
-        float ratioj = (float) (y-a_y)/(float) (b_y-a_y);
-        float j = (b_x - a_x) * ratioj + a_x;
-
-        drawLine(window, CanvasPoint(i, y), CanvasPoint(j, y), colour);
+    float maxLeftLine = max(abs(triangle.v0().x - extraX), abs(triangle.v0().y - extraY));
+    float maxRightLine = max(abs(triangle.v0().x - triangle.v1().x), abs(triangle.v0().y - triangle.v1().y));
+    float numberOfSteps = max(maxLeftLine, maxRightLine);
+    vector<CanvasPoint> left_line = interpolatePoints(triangle.v0(), CanvasPoint(extraX, extraY), numberOfSteps);
+    vector<CanvasPoint> right_line = interpolatePoints(triangle.v0(), triangle.v1(), numberOfSteps);
+    for(int i = 0; i < left_line.size(); i++){
+        drawLine(window, left_line[i], right_line[i], colour);
     }
 
     // Bottom triangle
-    for(int y = extraY; y < c_y; y++){
-        float ratioi = (float) (y-a_y)/(float) (c_y-a_y);
-        float i = (c_x - a_x) * ratioi + a_x;
-
-        float ratioj = (float) (y-b_y)/(float) (c_y-b_y);
-        float j = (c_x - b_x) * ratioj + b_x;
-
-        drawLine(window, CanvasPoint(i, y), CanvasPoint(j, y), colour);
+    float maxLeftLine2 = max(abs(extraX - triangle.v2().x), abs(extraY - triangle.v2().y));
+    float maxRightLine2 = max(abs(triangle.v1().x - triangle.v2().x), abs(triangle.v1().y - triangle.v2().y));
+    float numberOfSteps2 = max(maxLeftLine2, maxRightLine2);
+    vector<CanvasPoint> left_line_2 = interpolatePoints(CanvasPoint(extraX, extraY), triangle.v2(), numberOfSteps2);
+    vector<CanvasPoint> right_line_2 = interpolatePoints(triangle.v1(), triangle.v2(), numberOfSteps2);
+    for(int i = 0; i < left_line_2.size(); i++){
+        drawLine(window, left_line_2[i], right_line_2[i], colour);
     }
 
+    // White border
+    strokedTriangle(window, triangle, Colour(255, 255, 255));
+}
 
+void textureMapTriangle(DrawingWindow &window, CanvasTriangle triangle, TextureMap textureFile) {
+    // Sort vertices into top, middle, bottom
+    if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
+    if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
+    if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
+
+    // Divide triangle in half horizontally - find "extra" point
+    int extraY = triangle.v1().y;
+    int a_x = triangle.v0().x;
+    int a_y = triangle.v0().y;
+    int c_x = triangle.v2().x;
+    int c_y = triangle.v2().y;
+
+    float ratio = (float) (extraY-a_y)/(float) (c_y-a_y);
+    float extraX = (c_x - a_x) * ratio + a_x;
+
+    // Top triangle
+    float maxLeftLine = max(abs(triangle.v0().x - extraX), abs(triangle.v0().y - extraY));
+    float maxRightLine = max(abs(triangle.v0().x - triangle.v1().x), abs(triangle.v0().y - triangle.v1().y));
+    float numberOfSteps = max(maxLeftLine, maxRightLine);
+    vector<CanvasPoint> left_line = interpolatePoints(triangle.v0(), CanvasPoint(extraX, extraY), numberOfSteps);
+    vector<CanvasPoint> right_line = interpolatePoints(triangle.v0(), triangle.v1(), numberOfSteps);
+
+    float extraY_texture = triangle.v1().texturePoint.y;
+    float extraX_texture = (triangle.v2().texturePoint.x - triangle.v0().texturePoint.x) * ratio + triangle.v0().texturePoint.x;
+    float maxLeftLine_texture = max(abs(triangle.v0().texturePoint.x - extraX_texture), abs(triangle.v0().texturePoint.y - extraY_texture));
+    float maxRightLine_texture = max(abs(triangle.v0().texturePoint.x - triangle.v1().texturePoint.x), abs(triangle.v0().texturePoint.y - triangle.v1().texturePoint.y));
+    float numberOfSteps_texture = max(maxLeftLine_texture, maxRightLine_texture);
+    vector<CanvasPoint> left_line_texture = interpolateTexturePoints(triangle.v0().texturePoint, TexturePoint(extraX_texture, extraY_texture), numberOfSteps_texture);
+    vector<CanvasPoint> right_line_texture = interpolateTexturePoints(triangle.v0().texturePoint, triangle.v1().texturePoint, numberOfSteps_texture);
+
+    for(int i = 0; i < left_line.size(); i++){
+        float fraction_down_line = (float)i/left_line.size();
+        int position_on_left_texture_line = round(fraction_down_line * left_line_texture.size());
+        int position_on_right_texture_line = round(fraction_down_line * right_line_texture.size());
+
+        // Draw line
+        CanvasPoint to = left_line[i];
+        CanvasPoint from = right_line[i];
+        float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
+        float xStepSize = (to.x - from.x)/numberOfSteps;
+        float yStepSize = (to.y - from.y)/numberOfSteps;
+        CanvasPoint to_texture = left_line_texture[position_on_left_texture_line];
+        CanvasPoint from_texture = right_line_texture[position_on_right_texture_line];
+
+        float numberOfSteps_texture = max(abs(to_texture.x - from_texture.x), abs(to_texture.y - from_texture.y));
+        float xStepSize_texture = (to_texture.x - from_texture.x)/numberOfSteps_texture;
+        float yStepSize_texture = (to_texture.y - from_texture.y)/numberOfSteps_texture;
+        for (float i=0.0; i<numberOfSteps; i++) {
+            float x = from.x + (xStepSize * i);
+            float y = from.y + (yStepSize * i);
+            float x_texture = from_texture.x + (xStepSize_texture * i);
+            float y_texture = from_texture.y + (yStepSize_texture * i);
+            window.setPixelColour(round(x), round(y), textureFile.pixels[y_texture * textureFile.width + x_texture]);
+        }
+    }
+
+    // Bottom triangle
+    float maxLeftLine2 = max(abs(extraX - triangle.v2().x), abs(extraY - triangle.v2().y));
+    float maxRightLine2 = max(abs(triangle.v1().x - triangle.v2().x), abs(triangle.v1().y - triangle.v2().y));
+    float numberOfSteps2 = max(maxLeftLine2, maxRightLine2);
+    vector<CanvasPoint> left_line2 = interpolatePoints(CanvasPoint(extraX, extraY), triangle.v2(), numberOfSteps2);
+    vector<CanvasPoint> right_line2 = interpolatePoints(triangle.v1(), triangle.v2(), numberOfSteps2);
+
+    float maxLeftLine_texture2 = max(abs(extraX_texture - triangle.v2().texturePoint.x), abs(extraY_texture - triangle.v2().texturePoint.y));
+    float maxRightLine_texture2 = max(abs(triangle.v1().texturePoint.x - triangle.v2().texturePoint.x), abs(triangle.v1().texturePoint.y - triangle.v2().texturePoint.y));
+    float numberOfSteps_texture2 = max(maxLeftLine_texture2, maxRightLine_texture2);
+    vector<CanvasPoint> left_line_texture2 = interpolateTexturePoints(TexturePoint(extraX_texture, extraY_texture), triangle.v2().texturePoint, numberOfSteps_texture2);
+    vector<CanvasPoint> right_line_texture2 = interpolateTexturePoints(triangle.v1().texturePoint, triangle.v2().texturePoint, numberOfSteps_texture2);
+
+    for(int i = 0; i < left_line2.size(); i++){
+        float fraction_down_line = (float)i/left_line2.size();
+        int position_on_left_texture_line = round(fraction_down_line * left_line_texture2.size());
+        int position_on_right_texture_line = round(fraction_down_line * right_line_texture2.size());
+
+        // Draw line
+        CanvasPoint to = left_line2[i];
+        CanvasPoint from = right_line2[i];
+        float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
+        float xStepSize = (to.x - from.x)/numberOfSteps;
+        float yStepSize = (to.y - from.y)/numberOfSteps;
+        CanvasPoint to_texture = left_line_texture2[position_on_left_texture_line];
+        CanvasPoint from_texture = right_line_texture2[position_on_right_texture_line];
+
+        float numberOfSteps_texture = max(abs(to_texture.x - from_texture.x), abs(to_texture.y - from_texture.y));
+        float xStepSize_texture = (to_texture.x - from_texture.x)/numberOfSteps_texture;
+        float yStepSize_texture = (to_texture.y - from_texture.y)/numberOfSteps_texture;
+        for (float i=0.0; i<numberOfSteps; i++) {
+            float x = from.x + (xStepSize * i);
+            float y = from.y + (yStepSize * i);
+            float x_texture = from_texture.x + (xStepSize_texture * i);
+            float y_texture = from_texture.y + (yStepSize_texture * i);
+            window.setPixelColour(round(x), round(y), textureFile.pixels[y_texture * textureFile.width + x_texture]);
+        }
+    }
 
     // Draw white border
     strokedTriangle(window, triangle, Colour(255, 255, 255));
@@ -181,9 +300,20 @@ int main(int argc, char *argv[]) {
         Colour colour(0, 255, 0);
         //drawLine(window, from, to, colour);
         //drawColourGradient(window);
-        CanvasTriangle triangle(CanvasPoint(10, 10), CanvasPoint(10, 200), CanvasPoint(30, 100));
-        //strokedTriangle(window, triangle, colour);
-        filledTriangle(window, triangle, colour);
+
+        CanvasPoint cp1 = CanvasPoint(160, 10);
+        cp1.texturePoint = TexturePoint(195, 5);
+        CanvasPoint cp2 = CanvasPoint(300, 230);
+        cp2.texturePoint = TexturePoint(395, 380);
+        CanvasPoint cp3 = CanvasPoint(10, 150);
+        cp3.texturePoint = TexturePoint(65, 330);
+        CanvasTriangle triangle(cp1, cp2, cp3);
+        TextureMap textureFile("texture.ppm");
+        //CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
+
+        //strokedTriangle(window, textureTriangle, colour);
+        //filledTriangle(window, triangle1, colour);
+        textureMapTriangle(window, triangle, textureFile);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

@@ -4,11 +4,18 @@
 #include <Colour.h>
 #include <CanvasTriangle.h>
 #include <TextureMap.h>
+#include <ModelTriangle.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <Utils.h>
 #include <fstream>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <stdio.h>
+#include <string.h>
 
 #define WIDTH 640
 #define HEIGHT 480
@@ -54,7 +61,7 @@ void drawGreyGradient(DrawingWindow &window) {
 	}
 }
 
-void drawColourGradient(DrawingWindow &window){
+void drawColourGradient(DrawingWindow &window) {
     window.clearPixels();
 
     glm::vec3 topLeft(255, 0, 0);        // red
@@ -97,7 +104,7 @@ void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colo
     drawLine(window, triangle.v0(), triangle.v2(), colour);
 }
 
-vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float numberOfSteps){
+vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float numberOfSteps) {
     vector<CanvasPoint> linePoints;
     float xDiff = to.x - from.x;
     float yDiff = to.y - from.y;
@@ -111,7 +118,7 @@ vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float nu
     return linePoints;
 }
 
-vector<CanvasPoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfSteps){
+vector<CanvasPoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfSteps) {
     vector<CanvasPoint> linePoints;
     float xDiff = to.x - from.x;
     float yDiff = to.y - from.y;
@@ -233,6 +240,79 @@ void textureMapTriangle(DrawingWindow &window, CanvasTriangle triangle, TextureM
     strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
+vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library) {
+    ifstream file(objfile);
+    char character;
+    float x,y,z;
+    string tmpv1, tmpv2, tmpv3;
+    int v1, v2, v3;
+    string line;
+    string colour_name;
+    Colour colour;
+    glm::vec3 p1, p2, p3;
+
+    vector<glm::vec3> vertices;
+    vector<glm::vec3> faces;
+    vector<ModelTriangle> triangles;
+
+    // Add all vertices to vector and triangles to vector
+    while(getline(file, line)) {
+        istringstream stream(line);
+        stream >> character;
+        switch (character) {
+            case 'v':
+                stream >> x >> y >> z;
+                vertices.push_back({x * scale_factor, y * scale_factor, z * scale_factor});
+                break;
+            case 'f':
+                stream >> tmpv1 >> tmpv2 >> tmpv3;
+                v1 = stoi(tmpv1);
+                v2 = stoi(tmpv2);
+                v3 = stoi(tmpv3);
+
+                p1 = vertices[v1-1];
+                p2 = vertices[v2-1];
+                p3 = vertices[v3-1];
+                triangles.push_back(ModelTriangle(p1, p2, p3, colour));
+                break;
+            case 'u':
+                stream >> tmpv1 >> colour_name;
+                for (Colour curr_colour: colour_library){
+                    if (curr_colour.name == colour_name) {
+                        colour = curr_colour;
+                    }
+                }
+        }
+    }
+
+    return triangles;
+}
+
+vector<Colour> readMTLFile(string mtlfile) {
+    ifstream file(mtlfile);
+    vector<Colour> colours;
+    string keyword, name, line, line2;
+    float r, g, b;
+
+    while(getline(file, line)) {
+        // Get colour name from first line
+        istringstream stream(line);
+        stream >> keyword;
+        stream >> name;
+
+        // Get colour values from second line
+        getline(file, line2);
+        istringstream stream2(line2);
+        stream2 >> keyword;
+        stream2 >> r >> g >> b;
+        colours.push_back(Colour(name, r*255, g*255, b*255));
+
+        // Iterate over blank line and ignore
+        getline(file, line2);
+    }
+    return colours;
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -266,6 +346,7 @@ int main(int argc, char *argv[]) {
         CanvasPoint to(window.width/2, window.height);
         Colour colour(0, 255, 0);
 
+        // Set up triangle for testing texture mapping
         CanvasPoint cp1 = CanvasPoint(160, 10);
         cp1.texturePoint = TexturePoint(195, 5);
         CanvasPoint cp2 = CanvasPoint(300, 230);
@@ -280,8 +361,16 @@ int main(int argc, char *argv[]) {
         //drawColourGradient(window);
         //strokedTriangle(window, textureTriangle, colour);
         //filledTriangle(window, triangle1, colour);
-        filledTriangle(window, CanvasTriangle(CanvasPoint(104.4, 160.75), CanvasPoint(164.355, 220.229), CanvasPoint(104.4, 220.229)), Colour(0, 155, 0));
         //textureMapTriangle(window, triangle, textureFile);
+
+        vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
+        vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
+
+        /*
+        for (ModelTriangle triangle: triangles){
+            cout << triangle << endl;
+        }
+         */
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

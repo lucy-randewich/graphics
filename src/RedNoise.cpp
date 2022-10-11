@@ -387,31 +387,13 @@ int main(int argc, char *argv[]) {
         vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
         vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
         glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-
-        /*
-        // TODO debugging triangles
-        filledTriangle(window, CanvasTriangle(CanvasPoint(188, 373, 0), CanvasPoint(455, 373, 0), CanvasPoint(455, 107, 0)), Colour(255, 255, 255));
-
-        ModelTriangle triangle = triangles[5];
-        Colour pixel_colour = triangle.colour;
-        CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
-        CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
-        CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
-        CanvasTriangle ctriangle(p1, p2, p3);
-        //strokedTriangle(window, ctriangle, Colour(255, 255, 255));
-        //filledTriangle(window, ctriangle, pixel_colour);
-         */
-
-
-
+        
         for (ModelTriangle triangle : triangles) {
             Colour pixel_colour = triangle.colour;
-
             CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
             CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
             CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
             CanvasTriangle ctriangle(p1, p2, p3);
-            //strokedTriangle(window, ctriangle, Colour(255, 255, 255));
             filledTriangle(window, ctriangle, pixel_colour);
         }
 

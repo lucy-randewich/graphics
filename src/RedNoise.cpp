@@ -240,6 +240,23 @@ void textureMapTriangle(DrawingWindow &window, CanvasTriangle triangle, TextureM
     strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
+void drawTextureShape(DrawingWindow &window) {
+    // Set up triangle for testing texture mapping
+    CanvasPoint cp1 = CanvasPoint(160, 10);
+    cp1.texturePoint = TexturePoint(195, 5);
+    CanvasPoint cp2 = CanvasPoint(300, 230);
+    cp2.texturePoint = TexturePoint(395, 380);
+    CanvasPoint cp3 = CanvasPoint(10, 150);
+    cp3.texturePoint = TexturePoint(65, 330);
+    CanvasTriangle triangle(cp1, cp2, cp3);
+    TextureMap textureFile("texture.ppm");
+    CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
+
+    strokedTriangle(window, textureTriangle, Colour(0, 255, 0));
+
+    textureMapTriangle(window, triangle, textureFile);
+}
+
 vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library) {
     ifstream file(objfile);
     char character;
@@ -334,6 +351,29 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
     return CanvasPoint(round(u), round(v));
 }
 
+void drawObj(DrawingWindow &window){
+    // Set up matrix of floats for 1/z depth buffer
+    float arr[WIDTH][HEIGHT] = {{0}};
+
+    vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
+    glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
+
+    for (ModelTriangle triangle : triangles) {
+        // TODO interpolate z values for all points drawn in filled triangle and add to buffer
+        cout << triangle << endl;
+        // TODO create new filledTriangle function which checks if 1/z depth of point is greater than 1/z depth currently in buffer
+
+        Colour pixel_colour = triangle.colour;
+        CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
+        CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
+        CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
+        CanvasTriangle ctriangle(p1, p2, p3);
+        //strokedTriangle(window, ctriangle, pixel_colour);
+        filledTriangle(window, ctriangle, pixel_colour);
+    }
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -363,39 +403,12 @@ int main(int argc, char *argv[]) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
 
-        CanvasPoint from(window.width/2, 0);
-        CanvasPoint to(window.width/2, window.height);
-        Colour colour(0, 255, 0);
-
-        // Set up triangle for testing texture mapping
-        CanvasPoint cp1 = CanvasPoint(160, 10);
-        cp1.texturePoint = TexturePoint(195, 5);
-        CanvasPoint cp2 = CanvasPoint(300, 230);
-        cp2.texturePoint = TexturePoint(395, 380);
-        CanvasPoint cp3 = CanvasPoint(10, 150);
-        cp3.texturePoint = TexturePoint(65, 330);
-        //CanvasTriangle triangle(cp1, cp2, cp3);
-        //TextureMap textureFile("texture.ppm");
-        //CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
-
-        //drawLine(window, from, to, colour);
+        //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
         //drawColourGradient(window);
-        //strokedTriangle(window, textureTriangle, colour);
-        //filledTriangle(window, triangle1, colour);
-        //textureMapTriangle(window, triangle, textureFile);
 
-        vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-        vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
-        glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-        
-        for (ModelTriangle triangle : triangles) {
-            Colour pixel_colour = triangle.colour;
-            CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
-            CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
-            CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
-            CanvasTriangle ctriangle(p1, p2, p3);
-            filledTriangle(window, ctriangle, pixel_colour);
-        }
+        //drawTextureShape(window);
+
+        drawObj(window);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

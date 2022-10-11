@@ -17,8 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 320
+#define HEIGHT 240
 
 using namespace std;
 
@@ -313,6 +313,27 @@ vector<Colour> readMTLFile(string mtlfile) {
     return colours;
 }
 
+CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
+    float x = vertexPosition[0];
+    float y = vertexPosition[1];
+    float z = vertexPosition[2];
+
+    x = x - cameraPosition[0];
+    y = y - cameraPosition[1];
+    z = z - cameraPosition[2];
+
+    float u = focalLength * x/z;
+    float v = focalLength * y/z;
+
+    u *= window.width;
+    v *= window.width;
+
+    u += window.width/2;
+    v += window.height/2;
+
+    return CanvasPoint(u, v);
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -365,12 +386,17 @@ int main(int argc, char *argv[]) {
 
         vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
         vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
+        glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 
-        /*
-        for (ModelTriangle triangle: triangles){
-            cout << triangle << endl;
+        for (ModelTriangle triangle : triangles) {
+            //Colour pixel_colour = triangle.colour;
+            Colour pixel_colour = Colour(255, 255, 255);
+
+            for (glm::vec3 vertex : triangle.vertices) {
+                CanvasPoint intersection = getCanvasIntersectionPoint(window, cameraPosition, vertex, 2);
+                window.setPixelColour(round(intersection.x), round(intersection.y), (255 << 24) + (int(pixel_colour.red) << 16) + (int(pixel_colour.green) << 8) + int(pixel_colour.blue));
+            }
         }
-         */
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

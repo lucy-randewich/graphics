@@ -17,8 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 640
+#define HEIGHT 480
 
 using namespace std;
 
@@ -169,7 +169,7 @@ void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colou
     }
 
     // White border
-    strokedTriangle(window, triangle, Colour(255, 255, 255));
+    //strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
 void drawSubTextureTriangle(DrawingWindow &window, CanvasPoint a, CanvasPoint b, CanvasPoint c, TextureMap textureFile) {
@@ -322,7 +322,7 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
     y = y - cameraPosition[1];
     z = z - cameraPosition[2];
 
-    float u = focalLength * x/z;
+    float u = focalLength * -x/z;
     float v = focalLength * y/z;
 
     u *= window.width;
@@ -389,13 +389,15 @@ int main(int argc, char *argv[]) {
         glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 
         for (ModelTriangle triangle : triangles) {
-            //Colour pixel_colour = triangle.colour;
-            Colour pixel_colour = Colour(255, 255, 255);
+            Colour pixel_colour = triangle.colour;
 
-            for (glm::vec3 vertex : triangle.vertices) {
-                CanvasPoint intersection = getCanvasIntersectionPoint(window, cameraPosition, vertex, 2);
-                window.setPixelColour(round(intersection.x), round(intersection.y), (255 << 24) + (int(pixel_colour.red) << 16) + (int(pixel_colour.green) << 8) + int(pixel_colour.blue));
-            }
+            CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
+            CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
+            CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
+            CanvasTriangle ctriangle(p1, p2, p3);
+            strokedTriangle(window, ctriangle, pixel_colour);
+            filledTriangle(window, ctriangle, pixel_colour);
+
         }
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !

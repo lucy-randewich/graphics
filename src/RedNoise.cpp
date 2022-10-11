@@ -91,7 +91,7 @@ void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour co
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
     float xStepSize = (to.x - from.x)/numberOfSteps;
     float yStepSize = (to.y - from.y)/numberOfSteps;
-    for (float i=0.0; i<numberOfSteps; i++) {
+    for (float i=0.0; i<=numberOfSteps; i++) {
         float x = from.x + (xStepSize * i);
         float y = from.y + (yStepSize * i);
         window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
@@ -331,7 +331,7 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
     u += window.width/2;
     v += window.height/2;
 
-    return CanvasPoint(u, v);
+    return CanvasPoint(round(u), round(v));
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
@@ -374,9 +374,9 @@ int main(int argc, char *argv[]) {
         cp2.texturePoint = TexturePoint(395, 380);
         CanvasPoint cp3 = CanvasPoint(10, 150);
         cp3.texturePoint = TexturePoint(65, 330);
-        CanvasTriangle triangle(cp1, cp2, cp3);
-        TextureMap textureFile("texture.ppm");
-        CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
+        //CanvasTriangle triangle(cp1, cp2, cp3);
+        //TextureMap textureFile("texture.ppm");
+        //CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
 
         //drawLine(window, from, to, colour);
         //drawColourGradient(window);
@@ -388,6 +388,22 @@ int main(int argc, char *argv[]) {
         vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
         glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 
+        /*
+        // TODO debugging triangles
+        filledTriangle(window, CanvasTriangle(CanvasPoint(188, 373, 0), CanvasPoint(455, 373, 0), CanvasPoint(455, 107, 0)), Colour(255, 255, 255));
+
+        ModelTriangle triangle = triangles[5];
+        Colour pixel_colour = triangle.colour;
+        CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
+        CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
+        CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
+        CanvasTriangle ctriangle(p1, p2, p3);
+        //strokedTriangle(window, ctriangle, Colour(255, 255, 255));
+        //filledTriangle(window, ctriangle, pixel_colour);
+         */
+
+
+
         for (ModelTriangle triangle : triangles) {
             Colour pixel_colour = triangle.colour;
 
@@ -395,9 +411,8 @@ int main(int argc, char *argv[]) {
             CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
             CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
             CanvasTriangle ctriangle(p1, p2, p3);
-            strokedTriangle(window, ctriangle, pixel_colour);
+            //strokedTriangle(window, ctriangle, Colour(255, 255, 255));
             filledTriangle(window, ctriangle, pixel_colour);
-
         }
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !

@@ -17,8 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 640*1.5
+#define HEIGHT 480*1.5
 
 using namespace std;
 
@@ -351,27 +351,128 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
     return CanvasPoint(round(u), round(v));
 }
 
+vector<CanvasPoint> interpolatePointsWithDepth(CanvasPoint from, CanvasPoint to, float numberOfSteps) {
+    vector<CanvasPoint> linePoints;
+    float xDiff = to.x - from.x;
+    float yDiff = to.y - from.y;
+    float zDiff = to.depth - from.depth;
+    float xStepSize = xDiff/numberOfSteps;
+    float yStepSize = yDiff/numberOfSteps;
+    float zStepSize = zDiff/numberOfSteps;
+    for (float i=0.0; i<numberOfSteps; i++) {
+        float x = from.x + (xStepSize * i);
+        float y = from.y + (yStepSize * i);
+        float z = from.depth + (zStepSize * i);
+        linePoints.push_back(CanvasPoint(round(x), round(y), z));
+    }
+    return linePoints;
+}
+
+void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour, float **depth_buffer) {
+    float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
+    float xStepSize = (to.x - from.x)/numberOfSteps;
+    float yStepSize = (to.y - from.y)/numberOfSteps;
+    float zStepSize = (to.depth - from.depth)/numberOfSteps;
+    for (float i=0.0; i<=numberOfSteps; i++) {
+        float x = from.x + (xStepSize * i);
+        float y = from.y + (yStepSize * i);
+        float point_depth = 1/(1+exp(-(from.depth + (zStepSize * i))));
+
+        if (depth_buffer[int(round(x))][int(round(y))] <= point_depth) {
+            window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+            depth_buffer[int(round(x))][int(round(y))] = point_depth;
+        }
+    }
+}
+
+void filledTriangleWithDepth(DrawingWindow &window, CanvasTriangle triangle, Colour colour, float **depth_buffer) {
+    // Sort vertices into top, middle, bottom
+    if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
+    if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
+    if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
+
+    // Divide triangle in half horizontally - find "extra" point
+    int extraY = triangle.v1().y;
+    int a_x = triangle.v0().x;
+    int a_y = triangle.v0().y;
+    int c_x = triangle.v2().x;
+    int c_y = triangle.v2().y;
+    float c_z = triangle.v2().depth;
+    float a_z = triangle.v0().depth;
+
+    float ratio = (float) (extraY-a_y)/(float) (c_y-a_y);
+    float extraX = (c_x - a_x) * ratio + a_x;
+    float extraZ = (c_z - a_z) * ratio + a_z;
+
+    // Top triangle
+    float maxLeftLine = max(abs(triangle.v0().x - extraX), abs(triangle.v0().y - extraY));
+    float maxRightLine = max(abs(triangle.v0().x - triangle.v1().x), abs(triangle.v0().y - triangle.v1().y));
+    float numberOfSteps = max(maxLeftLine, maxRightLine);
+    vector<CanvasPoint> left_line = interpolatePointsWithDepth(triangle.v0(), CanvasPoint(extraX, extraY, extraZ), numberOfSteps);
+    vector<CanvasPoint> right_line = interpolatePointsWithDepth(triangle.v0(), triangle.v1(), numberOfSteps);
+    for(int i = 0; i < left_line.size(); i++){
+        drawLineWithDepth(window, left_line[i], right_line[i], colour, depth_buffer);
+    }
+
+    // Bottom triangle
+    float maxLeftLine2 = max(abs(extraX - triangle.v2().x), abs(extraY - triangle.v2().y));
+    float maxRightLine2 = max(abs(triangle.v1().x - triangle.v2().x), abs(triangle.v1().y - triangle.v2().y));
+    float numberOfSteps2 = max(maxLeftLine2, maxRightLine2);
+    vector<CanvasPoint> left_line_2 = interpolatePointsWithDepth(CanvasPoint(extraX, extraY, extraZ), triangle.v2(), numberOfSteps2);
+    vector<CanvasPoint> right_line_2 = interpolatePointsWithDepth(triangle.v1(), triangle.v2(), numberOfSteps2);
+    for(int i = 0; i < left_line_2.size(); i++){
+        drawLineWithDepth(window, left_line_2[i], right_line_2[i], colour, depth_buffer);
+    }
+
+}
+
+void drawDepth(DrawingWindow &window, float **depth_buffer){
+    for(size_t x = 0; x < window.width; x++){
+        for(size_t y = 0; y < window.height; y++){
+            if(depth_buffer[x][y] != -9999) {
+                cout << depth_buffer[x][y] << endl;
+                uint32_t colour_32 = (255 << 24) + (int(round(255 * depth_buffer[x][y])) << 16) +
+                                     (int(round(255 * depth_buffer[x][y])) << 8) + int(round(255 * depth_buffer[x][y]));
+                window.setPixelColour(x, y, colour_32);
+            }
+        }
+    }
+}
+
 void drawObj(DrawingWindow &window){
     // Set up matrix of floats for 1/z depth buffer
-    float arr[WIDTH][HEIGHT] = {{0}};
+    float **depth_buffer;
+    depth_buffer = new float *[window.width];
+    for(int i = 0; i <window.width; i++)
+        depth_buffer[i] = new float[window.height];
+
+    for(int i = 0; i < window.width; i++){
+        for(int j = 0; j < window.height; j++){
+            depth_buffer[i][j] = 0;
+        }
+    }
 
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
 
     for (ModelTriangle triangle : triangles) {
-        // TODO interpolate z values for all points drawn in filled triangle and add to buffer
-        cout << triangle << endl;
-        // TODO create new filledTriangle function which checks if 1/z depth of point is greater than 1/z depth currently in buffer
-
         Colour pixel_colour = triangle.colour;
+
+        // Get canvas intersection points of triangle vertices and give depths to each
         CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
+        p1.depth = triangle.vertices[0][2];
         CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
+        p2.depth = triangle.vertices[1][2];
         CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
+        p3.depth = triangle.vertices[2][2];
         CanvasTriangle ctriangle(p1, p2, p3);
-        //strokedTriangle(window, ctriangle, pixel_colour);
-        filledTriangle(window, ctriangle, pixel_colour);
+
+        //strokedTriangle(window, ctriangle, pixel_colour);     // This is for the wireframe if you want it
+        //filledTriangle(window, ctriangle, pixel_colour);      // Filled triangle version without occlusion
+        filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer);
     }
+    //drawDepth(window, depth_buffer);
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
@@ -399,16 +500,17 @@ int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
 
+
+    //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
+    //drawColourGradient(window);
+
+    //drawTextureShape(window);
+    drawObj(window);
+
+
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-
-        //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
-        //drawColourGradient(window);
-
-        //drawTextureShape(window);
-
-        drawObj(window);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

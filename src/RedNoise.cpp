@@ -439,7 +439,7 @@ void drawDepth(DrawingWindow &window, float **depth_buffer){
     }
 }
 
-void drawObj(DrawingWindow &window){
+void drawObj(DrawingWindow &window, glm::vec3 cameraPosition){
     // Set up matrix of floats for 1/z depth buffer
     float **depth_buffer;
     depth_buffer = new float *[window.width];
@@ -454,7 +454,6 @@ void drawObj(DrawingWindow &window){
 
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
-    glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
 
     for (ModelTriangle triangle : triangles) {
         Colour pixel_colour = triangle.colour;
@@ -475,12 +474,33 @@ void drawObj(DrawingWindow &window){
     //drawDepth(window, depth_buffer);
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window) {
+void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition) {
 	if (event.type == SDL_KEYDOWN) {
-		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
-		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
+		if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] + 0.015;
+		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] - 0.015;
+		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] - 0.015;
+		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] + 0.015;
+        else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] - 0.015;
+        else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] + 0.015;
+        else if (event.key.keysym.sym == SDLK_a) {
+            //TODO rotate about the x axis
+            float theta = 0.01;
+            glm::mat3 rotate_matrix = glm::mat3(1, 0, 0,
+                                                0, cos(theta), sin(theta),
+                                                0, -sin(theta), cos(theta));
+            cameraPosition = cameraPosition * rotate_matrix;
+            for (int i = 0 ; i < 3; i++){
+                cout << cameraPosition[i] << endl;
+            }
+        }
+        else if (event.key.keysym.sym == SDLK_d) {
+            //TODO rotate about the y axis
+            float theta = 0.01;
+            glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0, -sin(theta),
+                                                0, 1, 0,
+                                                sin(theta), 0, cos(theta));
+            cameraPosition = cameraPosition * rotate_matrix;
+        }
         else if (event.key.keysym.sym == SDLK_u) {
             CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
             Colour colour(rand()%256, rand()%256, rand()%256);
@@ -503,16 +523,20 @@ int main(int argc, char *argv[]) {
 
     //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
     //drawColourGradient(window);
-
     //drawTextureShape(window);
-    drawObj(window);
 
+    glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window);
+		if (window.pollForInputEvents(event)) {
+            handleEvent(event, window, cameraPosition);
+        }
 
-		// Need to render the frame at the end, or nothing actually gets shown on the screen !
+        window.clearPixels();
+        drawObj(window, cameraPosition);
+
+        // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
 

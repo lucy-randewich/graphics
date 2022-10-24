@@ -16,6 +16,7 @@
 #include <sstream>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define WIDTH 640*1.5
 #define HEIGHT 480*1.5
@@ -351,6 +352,22 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
     return CanvasPoint(round(u), round(v));
 }
 
+CanvasPoint getCanvasIntersectionPointWithOrientation(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, glm::vec3 vertexPosition, float focalLength) {
+//    glm::vec3 projectedVertex = (vertexPosition - cameraPosition) * cameraOrientation;
+    glm::vec3 projectedVertex = cameraOrientation * (cameraPosition - vertexPosition);
+
+    float u = focalLength * -projectedVertex.x/projectedVertex.z;
+    float v = focalLength * projectedVertex.y/projectedVertex.z;
+
+    u *= window.width;
+    v *= window.width;
+
+    u += window.width/2.0f;
+    v += window.height/2.0f;
+
+    return CanvasPoint(round(u), round(v));
+}
+
 vector<CanvasPoint> interpolatePointsWithDepth(CanvasPoint from, CanvasPoint to, float numberOfSteps) {
     vector<CanvasPoint> linePoints;
     float xDiff = to.x - from.x;
@@ -378,9 +395,13 @@ void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, 
         float y = from.y + (yStepSize * i);
         float point_depth = 1/(1+exp(-(from.depth + (zStepSize * i))));
 
-        if (depth_buffer[int(round(x))][int(round(y))] <= point_depth) {
-            window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
-            depth_buffer[int(round(x))][int(round(y))] = point_depth;
+        if(int(round(x) < window.width && int(round(x)) >0 && int(round(y) < window.height && int(round(y)) >0))){
+                if (depth_buffer[int(round(x))][int(round(y))] <= point_depth) {
+                    window.setPixelColour(round(x), round(y),
+                                          (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) +
+                                          int(colour.blue));
+                    depth_buffer[int(round(x))][int(round(y))] = point_depth;
+                }
         }
     }
 }
@@ -439,7 +460,7 @@ void drawDepth(DrawingWindow &window, float **depth_buffer){
     }
 }
 
-void drawObj(DrawingWindow &window, glm::vec3 cameraPosition){
+void drawObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation){
     // Set up matrix of floats for 1/z depth buffer
     float **depth_buffer;
     depth_buffer = new float *[window.width];
@@ -459,11 +480,11 @@ void drawObj(DrawingWindow &window, glm::vec3 cameraPosition){
         Colour pixel_colour = triangle.colour;
 
         // Get canvas intersection points of triangle vertices and give depths to each
-        CanvasPoint p1 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[0], 2);
+        CanvasPoint p1 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[0], 2);
         p1.depth = triangle.vertices[0][2];
-        CanvasPoint p2 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[1], 2);
+        CanvasPoint p2 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[1], 2);
         p2.depth = triangle.vertices[1][2];
-        CanvasPoint p3 = getCanvasIntersectionPoint(window, cameraPosition, triangle.vertices[2], 2);
+        CanvasPoint p3 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[2], 2);
         p3.depth = triangle.vertices[2][2];
         CanvasTriangle ctriangle(p1, p2, p3);
 
@@ -474,34 +495,41 @@ void drawObj(DrawingWindow &window, glm::vec3 cameraPosition){
     //drawDepth(window, depth_buffer);
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition) {
+void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &cameraPosition) {
+    glm::vec3 forward = glm::normalize(cameraPosition - pointToLookAt);
+    glm::vec3 vertical = glm::vec3(0, 1, 0);
+    glm::vec3 right = -glm::normalize(glm::cross(forward, vertical));
+    glm::vec3 up = -glm::normalize(glm::cross(forward, -right));
+    cameraOrientation = glm::transpose(glm::mat3(right, up, forward));
+}
+
+void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
 	if (event.type == SDL_KEYDOWN) {
-		if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] + 0.015;
-		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] - 0.015;
-		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] - 0.015;
-		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] + 0.015;
-        else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] - 0.015;
-        else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] + 0.015;
-        else if (event.key.keysym.sym == SDLK_a) {
-            //TODO rotate about the x axis
-            float theta = 0.01;
+		if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
+		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.2;
+		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.2;
+		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] - 0.2;
+        else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] + 0.2;
+        else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] - 0.2;
+        else if (event.key.keysym.sym == SDLK_j) {
+            // Pan camera (y axis)
+            float theta = glm::radians(2.0);
+            glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
+                                                0.0, 1.0, 0.0,
+                                                sin(theta), 0.0, cos(theta));
+            cameraPosition = cameraPosition * rotate_matrix;
+            lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
+        }else if (event.key.keysym.sym == SDLK_l) {
+            // Tilt camera (x axis)
+            float theta = glm::radians(2.0);
             glm::mat3 rotate_matrix = glm::mat3(1, 0, 0,
                                                 0, cos(theta), sin(theta),
                                                 0, -sin(theta), cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
-            for (int i = 0 ; i < 3; i++){
-                cout << cameraPosition[i] << endl;
-            }
-        }
-        else if (event.key.keysym.sym == SDLK_d) {
-            //TODO rotate about the y axis
-            float theta = 0.01;
-            glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0, -sin(theta),
-                                                0, 1, 0,
-                                                sin(theta), 0, cos(theta));
-            cameraPosition = cameraPosition * rotate_matrix;
-        }
-        else if (event.key.keysym.sym == SDLK_u) {
+            lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
+        }else if (event.key.keysym.sym == SDLK_o) {
+            // Orbit
+        }else if (event.key.keysym.sym == SDLK_u) {
             CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
             Colour colour(rand()%256, rand()%256, rand()%256);
             strokedTriangle(window, triangle, colour);
@@ -520,21 +548,23 @@ int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
 
-
     //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
     //drawColourGradient(window);
     //drawTextureShape(window);
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
+    glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
+                                            0, 1, 0,
+                                            0, 0, 1);
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) {
-            handleEvent(event, window, cameraPosition);
+            handleEvent(event, window, cameraPosition, cameraOrientation);
         }
 
         window.clearPixels();
-        drawObj(window, cameraPosition);
+        drawObj(window, cameraPosition, cameraOrientation);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

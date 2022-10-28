@@ -353,19 +353,21 @@ CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPo
 }
 
 CanvasPoint getCanvasIntersectionPointWithOrientation(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, glm::vec3 vertexPosition, float focalLength) {
-//    glm::vec3 projectedVertex = (vertexPosition - cameraPosition) * cameraOrientation;
-    glm::vec3 projectedVertex = cameraOrientation * (cameraPosition - vertexPosition);
+    glm::vec3 projectedVertex = (vertexPosition - cameraPosition) * cameraOrientation;
+    //glm::vec3 projectedVertex = cameraOrientation * (cameraPosition - vertexPosition);
 
     float u = focalLength * -projectedVertex.x/projectedVertex.z;
     float v = focalLength * projectedVertex.y/projectedVertex.z;
+    float z = focalLength * projectedVertex.z;
 
     u *= window.width;
     v *= window.width;
+    //z *= window.width;
 
     u += window.width/2.0f;
     v += window.height/2.0f;
 
-    return CanvasPoint(round(u), round(v));
+    return CanvasPoint(round(u), round(v), z);
 }
 
 vector<CanvasPoint> interpolatePointsWithDepth(CanvasPoint from, CanvasPoint to, float numberOfSteps) {
@@ -385,28 +387,27 @@ vector<CanvasPoint> interpolatePointsWithDepth(CanvasPoint from, CanvasPoint to,
     return linePoints;
 }
 
-void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour, float **depth_buffer) {
+void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour, float **depth_buffer, glm::vec3 cameraPosition) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
     float xStepSize = (to.x - from.x)/numberOfSteps;
     float yStepSize = (to.y - from.y)/numberOfSteps;
     float zStepSize = (to.depth - from.depth)/numberOfSteps;
     for (float i=0.0; i<=numberOfSteps; i++) {
-        float x = from.x + (xStepSize * i);
-        float y = from.y + (yStepSize * i);
-        float point_depth = 1/(1+exp(-(from.depth + (zStepSize * i))));
+        int x = int(round(from.x + (xStepSize * i)));
+        int y = int(round(from.y + (yStepSize * i)));
+        float point_depth = 1/((1+exp(-(from.depth + (zStepSize * i)))));
+        //float point_depth = 1/((from.depth + (zStepSize * i)));
 
-        if(int(round(x) < window.width && int(round(x)) >0 && int(round(y) < window.height && int(round(y)) >0))){
-                if (depth_buffer[int(round(x))][int(round(y))] <= point_depth) {
-                    window.setPixelColour(round(x), round(y),
-                                          (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) +
-                                          int(colour.blue));
-                    depth_buffer[int(round(x))][int(round(y))] = point_depth;
+        if(x < window.width && x > 0 && y < window.height && y > 0){
+                if (depth_buffer[x][y] <= point_depth) {
+                    window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+                    depth_buffer[x][y] = point_depth;
                 }
         }
     }
 }
 
-void filledTriangleWithDepth(DrawingWindow &window, CanvasTriangle triangle, Colour colour, float **depth_buffer) {
+void filledTriangleWithDepth(DrawingWindow &window, CanvasTriangle triangle, Colour colour, float **depth_buffer, glm::vec3 cameraPosition) {
     // Sort vertices into top, middle, bottom
     if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
     if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
@@ -432,7 +433,7 @@ void filledTriangleWithDepth(DrawingWindow &window, CanvasTriangle triangle, Col
     vector<CanvasPoint> left_line = interpolatePointsWithDepth(triangle.v0(), CanvasPoint(extraX, extraY, extraZ), numberOfSteps);
     vector<CanvasPoint> right_line = interpolatePointsWithDepth(triangle.v0(), triangle.v1(), numberOfSteps);
     for(int i = 0; i < left_line.size(); i++){
-        drawLineWithDepth(window, left_line[i], right_line[i], colour, depth_buffer);
+        drawLineWithDepth(window, left_line[i], right_line[i], colour, depth_buffer, cameraPosition);
     }
 
     // Bottom triangle
@@ -442,7 +443,7 @@ void filledTriangleWithDepth(DrawingWindow &window, CanvasTriangle triangle, Col
     vector<CanvasPoint> left_line_2 = interpolatePointsWithDepth(CanvasPoint(extraX, extraY, extraZ), triangle.v2(), numberOfSteps2);
     vector<CanvasPoint> right_line_2 = interpolatePointsWithDepth(triangle.v1(), triangle.v2(), numberOfSteps2);
     for(int i = 0; i < left_line_2.size(); i++){
-        drawLineWithDepth(window, left_line_2[i], right_line_2[i], colour, depth_buffer);
+        drawLineWithDepth(window, left_line_2[i], right_line_2[i], colour, depth_buffer, cameraPosition);
     }
 
 }
@@ -479,18 +480,15 @@ void drawObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOr
     for (ModelTriangle triangle : triangles) {
         Colour pixel_colour = triangle.colour;
 
-        // Get canvas intersection points of triangle vertices and give depths to each
+        // Get canvas intersection points of triangle vertices
         CanvasPoint p1 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[0], 2);
-        p1.depth = triangle.vertices[0][2];
         CanvasPoint p2 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[1], 2);
-        p2.depth = triangle.vertices[1][2];
         CanvasPoint p3 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[2], 2);
-        p3.depth = triangle.vertices[2][2];
         CanvasTriangle ctriangle(p1, p2, p3);
 
         //strokedTriangle(window, ctriangle, pixel_colour);     // This is for the wireframe if you want it
         //filledTriangle(window, ctriangle, pixel_colour);      // Filled triangle version without occlusion
-        filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer);
+        filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer, cameraPosition);
     }
     //drawDepth(window, depth_buffer);
 }
@@ -498,9 +496,9 @@ void drawObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOr
 void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &cameraPosition) {
     glm::vec3 forward = glm::normalize(cameraPosition - pointToLookAt);
     glm::vec3 vertical = glm::vec3(0, 1, 0);
-    glm::vec3 right = -glm::normalize(glm::cross(forward, vertical));
-    glm::vec3 up = -glm::normalize(glm::cross(forward, -right));
-    cameraOrientation = glm::transpose(glm::mat3(right, up, forward));
+    glm::vec3 right = glm::normalize(glm::cross(vertical, forward));
+    glm::vec3 up = glm::normalize(glm::cross(forward, right));
+    cameraOrientation = glm::mat3(right, up, forward);
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
@@ -513,7 +511,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
         else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] - 0.2;
         else if (event.key.keysym.sym == SDLK_j) {
             // Pan camera (y axis)
-            float theta = glm::radians(2.0);
+            float theta = glm::radians(2.5);
             glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
                                                 0.0, 1.0, 0.0,
                                                 sin(theta), 0.0, cos(theta));
@@ -521,7 +519,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
         }else if (event.key.keysym.sym == SDLK_l) {
             // Tilt camera (x axis)
-            float theta = glm::radians(2.0);
+            float theta = glm::radians(2.5);
             glm::mat3 rotate_matrix = glm::mat3(1, 0, 0,
                                                 0, cos(theta), sin(theta),
                                                 0, -sin(theta), cos(theta));

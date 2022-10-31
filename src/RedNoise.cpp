@@ -527,9 +527,15 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     // Loop through each pixel in image plane casting a ray from camera through pixel and onto scene
     for (int x = 0; x < window.width; x++){
         for (int y = 0; y < window.height; y++){
-            glm::vec3 rayDirection = cameraPosition - glm::vec3(x, y, 0);
+            // Convert from (x,y) to direction in 3D space
+            glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosition;
+            //float x_over_z = (x - window.width*2)/(window.width * 2);
+            //float y_over_z = (y - window.width*2)/(window.width * 2);
+            //glm::vec3 rayDirection = glm::vec3(x_over_z, y_over_z, 0) + cameraPosition;
+
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, rayDirection, triangles);
-            // Draw pixel colour of intersection triangle
+            Colour colour = intersectionTriangle.intersectedTriangle.colour;
+            window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
         }
     }
 }

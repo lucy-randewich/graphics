@@ -5,6 +5,7 @@
 #include <CanvasTriangle.h>
 #include <TextureMap.h>
 #include <ModelTriangle.h>
+#include <RayTriangleIntersection.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <Utils.h>
@@ -18,8 +19,8 @@
 #include <string.h>
 #include <math.h>
 
-#define WIDTH 640*1.5
-#define HEIGHT 480*1.5
+#define WIDTH 320*3
+#define HEIGHT 240*3
 
 using namespace std;
 
@@ -461,7 +462,7 @@ void drawDepth(DrawingWindow &window, float **depth_buffer){
     }
 }
 
-void drawObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation){
+void rasteriseObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles){
     // Set up matrix of floats for 1/z depth buffer
     float **depth_buffer;
     depth_buffer = new float *[window.width];
@@ -473,9 +474,6 @@ void drawObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOr
             depth_buffer[i][j] = 0;
         }
     }
-
-    vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
 
     for (ModelTriangle triangle : triangles) {
         Colour pixel_colour = triangle.colour;
@@ -499,6 +497,41 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
     glm::vec3 right = glm::normalize(glm::cross(vertical, forward));
     glm::vec3 up = glm::normalize(glm::cross(forward, right));
     cameraOrientation = glm::mat3(right, up, forward);
+}
+
+// Search through triangles and return closest intersected triangle
+RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> triangles) {
+    RayTriangleIntersection closestIntersection = RayTriangleIntersection();
+    int smallest_t = 9999;
+    int index = 0;
+    for (ModelTriangle triangle : triangles) {
+        glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
+        glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
+        glm::vec3 SPVector = cameraPosition - triangle.vertices[0];
+        glm::mat3 DEMatrix(-rayDirection, e0, e1);
+        glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;     // In form (t,u,v)
+        bool valid = false;
+        if ((possibleSolution[1] >= 0.0) && (possibleSolution[1] <= 1.0) && (possibleSolution[2] >= 0.0) && (possibleSolution[2] <= 1.0) && (possibleSolution[1] + possibleSolution[2]) <= 1.0) valid = true;
+        if (valid && possibleSolution[0] < smallest_t && possibleSolution[0] >= 0){
+            cout << "intersection!" << endl;
+            glm::vec3 intersection = triangle.vertices[0] + possibleSolution[1] * (triangle.vertices[1] - triangle.vertices[0]) + possibleSolution[2] * (triangle.vertices[2] - triangle.vertices[0]);
+            smallest_t = possibleSolution[0];
+            closestIntersection = RayTriangleIntersection(intersection, possibleSolution[0], triangle, index);
+        }
+        index++;
+    }
+    return closestIntersection;
+}
+
+void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles) {
+    // Loop through each pixel in image plane casting a ray from camera through pixel and onto scene
+    for (int x = 0; x < window.width; x++){
+        for (int y = 0; y < window.height; y++){
+            glm::vec3 rayDirection = cameraPosition - glm::vec3(x, y, 0);
+            RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, rayDirection, triangles);
+            // Draw pixel colour of intersection triangle
+        }
+    }
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
@@ -555,6 +588,10 @@ int main(int argc, char *argv[]) {
                                             0, 1, 0,
                                             0, 0, 1);
 
+    // Read obj data from files
+    vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
+
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) {
@@ -562,10 +599,10 @@ int main(int argc, char *argv[]) {
         }
 
         window.clearPixels();
-        drawObj(window, cameraPosition, cameraOrientation);
+        //rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
+        rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
-
 }

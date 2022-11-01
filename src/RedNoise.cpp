@@ -527,13 +527,17 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     // Loop through each pixel in image plane casting a ray from camera through pixel and onto scene
     for (int x = 0; x < window.width; x++){
         for (int y = 0; y < window.height; y++){
-            // Convert from (x,y) to direction in 3D space
-            glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosition;
-            //float x_over_z = (x - window.width*2)/(window.width * 2);
-            //float y_over_z = (y - window.width*2)/(window.width * 2);
-            //glm::vec3 rayDirection = glm::vec3(x_over_z, y_over_z, 0) + cameraPosition;
+            glm::vec3 rayDirection = glm::vec3(x, y, 2.0f);
+            rayDirection = ((rayDirection - WIDTH/2.0f)/(WIDTH*2.0f));
+            rayDirection[0] = -(rayDirection[0] * rayDirection[2]);
+            rayDirection[1] = rayDirection[1] * rayDirection[2];
+
+            rayDirection = rayDirection * glm::inverse(cameraOrientation);
+
+            //rayDirection = (rayDirection * glm::inverse(cameraOrientation)) + cameraPosition;
 
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, rayDirection, triangles);
+
             Colour colour = intersectionTriangle.intersectedTriangle.colour;
             window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
         }
@@ -598,7 +602,7 @@ int main(int argc, char *argv[]) {
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
 
-	while (true) {
+    while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) {
             handleEvent(event, window, cameraPosition, cameraOrientation);
@@ -607,6 +611,7 @@ int main(int argc, char *argv[]) {
         window.clearPixels();
         //rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
         rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
+
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

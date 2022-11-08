@@ -24,6 +24,8 @@
 
 using namespace std;
 
+string renderer = "rasterised";
+
 
 vector<float> interpolateSingleFloats(float from, float to, int numberOfValues) {
     vector<float> vec;
@@ -462,7 +464,7 @@ void drawDepth(DrawingWindow &window, float **depth_buffer){
     }
 }
 
-void rasteriseObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles){
+void rasteriseObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles, bool wireframe){
     // Set up matrix of floats for 1/z depth buffer
     float **depth_buffer;
     depth_buffer = new float *[window.width];
@@ -484,9 +486,8 @@ void rasteriseObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cam
         CanvasPoint p3 = getCanvasIntersectionPointWithOrientation(window, cameraPosition, cameraOrientation, triangle.vertices[2], 2);
         CanvasTriangle ctriangle(p1, p2, p3);
 
-        //strokedTriangle(window, ctriangle, pixel_colour);     // This is for the wireframe if you want it
-        //filledTriangle(window, ctriangle, pixel_colour);      // Filled triangle version without occlusion
-        filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer, cameraPosition);
+        if(wireframe) strokedTriangle(window, ctriangle, pixel_colour);
+        else filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer, cameraPosition);
     }
     //drawDepth(window, depth_buffer);
 }
@@ -534,8 +535,8 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
             rayDirection[0] = (rayDirection[0] - WIDTH/2.0f);
             rayDirection[1] = (rayDirection[1] - HEIGHT/2.0f);
 
-            rayDirection[0] = rayDirection[0]/(WIDTH);
-            rayDirection[1] = rayDirection[1]/(WIDTH);
+            rayDirection[0] = rayDirection[0]/(WIDTH*2);
+            rayDirection[1] = rayDirection[1]/(WIDTH*2);
 
             rayDirection[0] = -(rayDirection[0] * rayDirection[2]);
             rayDirection[1] = rayDirection[1] * rayDirection[2];
@@ -552,30 +553,29 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
 	if (event.type == SDL_KEYDOWN) {
-		if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
+        if (event.key.keysym.sym == SDLK_1) renderer = "wireframe";
+        else if (event.key.keysym.sym == SDLK_2) renderer = "rasterised";
+        else if (event.key.keysym.sym == SDLK_3) renderer = "ray_traced";
+		else if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
 		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.2;
 		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.2;
 		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] - 0.2;
         else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] + 0.2;
         else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] - 0.2;
-        else if (event.key.keysym.sym == SDLK_j) {
-            // Pan camera (y axis)
+        else if (event.key.keysym.sym == SDLK_j) {             // Pan camera (y axis)
             float theta = glm::radians(2.5);
             glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
                                                 0.0, 1.0, 0.0,
                                                 sin(theta), 0.0, cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
-        }else if (event.key.keysym.sym == SDLK_l) {
-            // Tilt camera (x axis)
+        }else if (event.key.keysym.sym == SDLK_l) {            // Tilt camera (x axis)
             float theta = glm::radians(2.5);
             glm::mat3 rotate_matrix = glm::mat3(1, 0, 0,
                                                 0, cos(theta), sin(theta),
                                                 0, -sin(theta), cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
-        }else if (event.key.keysym.sym == SDLK_o) {
-            // Orbit
         }else if (event.key.keysym.sym == SDLK_u) {
             CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
             Colour colour(rand()%256, rand()%256, rand()%256);
@@ -606,7 +606,7 @@ int main(int argc, char *argv[]) {
 
     // Read obj data from files
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.35, colour_library);
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.15, colour_library);
 
     while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
@@ -615,9 +615,9 @@ int main(int argc, char *argv[]) {
         }
 
         window.clearPixels();
-        //rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
-        rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
-
+        if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
+        else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
+        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

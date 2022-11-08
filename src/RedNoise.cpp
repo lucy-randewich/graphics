@@ -502,7 +502,7 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
 // Search through triangles and return closest intersected triangle
 RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> triangles) {
     RayTriangleIntersection closestIntersection = RayTriangleIntersection();
-    int smallest_t = 9999;
+    float smallest_t = 999999;
     int index = 0;
     for (ModelTriangle triangle : triangles) {
         glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
@@ -510,13 +510,16 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::ve
         glm::vec3 SPVector = cameraPosition - triangle.vertices[0];
         glm::mat3 DEMatrix(-rayDirection, e0, e1);
         glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;     // In form (t,u,v)
-        bool valid = false;
-        if ((possibleSolution[1] >= 0.0) && (possibleSolution[1] <= 1.0) && (possibleSolution[2] >= 0.0) && (possibleSolution[2] <= 1.0) && (possibleSolution[1] + possibleSolution[2]) <= 1.0) valid = true;
-        if (valid && possibleSolution[0] < smallest_t && possibleSolution[0] >= 0){
-            cout << "intersection!" << endl;
-            glm::vec3 intersection = triangle.vertices[0] + possibleSolution[1] * (triangle.vertices[1] - triangle.vertices[0]) + possibleSolution[2] * (triangle.vertices[2] - triangle.vertices[0]);
-            smallest_t = possibleSolution[0];
-            closestIntersection = RayTriangleIntersection(intersection, possibleSolution[0], triangle, index);
+        float t = possibleSolution[0];
+        float u = possibleSolution[1];
+        float v = possibleSolution[2];
+
+        if((u>=0.0) && (u<=1.0) && (v>=0.0) && (v<=1.0) && ((u+v)<=1.0)){
+            if((t < smallest_t) && t>0.0){
+                glm::vec3 intersection = triangle.vertices[0] + u * (triangle.vertices[1] - triangle.vertices[0]) + v * (triangle.vertices[2] - triangle.vertices[0]);
+                smallest_t = t;
+                closestIntersection = RayTriangleIntersection(intersection, t, triangle, index);
+            }
         }
         index++;
     }
@@ -527,14 +530,17 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     // Loop through each pixel in image plane casting a ray from camera through pixel and onto scene
     for (int x = 0; x < window.width; x++){
         for (int y = 0; y < window.height; y++){
-            glm::vec3 rayDirection = glm::vec3(x, y, 2.0f);
-            rayDirection = ((rayDirection - WIDTH/2.0f)/(WIDTH*2.0f));
+            glm::vec3 rayDirection = glm::vec3(x, y, -2.0f);
+            rayDirection[0] = (rayDirection[0] - WIDTH/2.0f);
+            rayDirection[1] = (rayDirection[1] - HEIGHT/2.0f);
+
+            rayDirection[0] = rayDirection[0]/(WIDTH);
+            rayDirection[1] = rayDirection[1]/(WIDTH);
+
             rayDirection[0] = -(rayDirection[0] * rayDirection[2]);
             rayDirection[1] = rayDirection[1] * rayDirection[2];
 
-            rayDirection = rayDirection * glm::inverse(cameraOrientation);
-
-            //rayDirection = (rayDirection * glm::inverse(cameraOrientation)) + cameraPosition;
+            rayDirection = glm::normalize(rayDirection * glm::inverse(cameraOrientation));
 
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, rayDirection, triangles);
 
@@ -600,7 +606,7 @@ int main(int argc, char *argv[]) {
 
     // Read obj data from files
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.17, colour_library);
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.35, colour_library);
 
     while (true) {
 		// We MUST poll for events - otherwise the window will freeze !

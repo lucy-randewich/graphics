@@ -26,71 +26,6 @@ using namespace std;
 
 string renderer = "rasterised";
 
-
-vector<float> interpolateSingleFloats(float from, float to, int numberOfValues) {
-    vector<float> vec;
-    float increment = (to-from)/(numberOfValues-1);
-    for(size_t i = 0; i < numberOfValues; i++){
-        vec.push_back(from);
-        from += increment;
-    }
-    return vec;
-}
-
-vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
-    vector<glm::vec3> vec;
-
-    vector<float> val1 = interpolateSingleFloats(from[0], to[0], numberOfValues);
-    vector<float> val2 = interpolateSingleFloats(from[1], to[1], numberOfValues);
-    vector<float> val3 = interpolateSingleFloats(from[2], to[2], numberOfValues);
-
-    for(size_t i=0; i<numberOfValues; i++) {
-        glm::vec3 tmp(val1[i], val2[i], val3[i]);
-        vec.push_back(tmp);
-    }
-    return vec;
-}
-
-void drawGreyGradient(DrawingWindow &window) {
-	window.clearPixels();
-    vector<float> widthPixelValues = interpolateSingleFloats(255, 0, window.width);
-    for (size_t y = 0; y < window.height; y++) {
-		for (size_t x = 0; x < window.width; x++) {
-			float red = widthPixelValues[x];
-			float green = widthPixelValues[x];
-			float blue = widthPixelValues[x];
-			uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-			window.setPixelColour(x, y, colour);
-		}
-	}
-}
-
-void drawColourGradient(DrawingWindow &window) {
-    window.clearPixels();
-
-    glm::vec3 topLeft(255, 0, 0);        // red
-    glm::vec3 topRight(0, 0, 255);       // blue
-    glm::vec3 bottomRight(0, 255, 0);    // green
-    glm::vec3 bottomLeft(255, 255, 0);   // yellow
-
-    vector<glm::vec3> redToYellow = interpolateThreeElementValues(topLeft, bottomLeft, window.height);
-    vector<glm::vec3> blueToGreen = interpolateThreeElementValues(topRight, bottomRight, window.height);
-
-    for (size_t y = 0; y < window.height; y++) {
-        vector<glm::vec3> rowVals = interpolateThreeElementValues(redToYellow[y], blueToGreen[y], window.width);
-        for (size_t x = 0; x < window.width; x++) {
-            glm::vec3 thisRowVals = rowVals[x];
-
-            float red = thisRowVals[0];
-            float green = thisRowVals[1];
-            float blue = thisRowVals[2];
-            uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-            window.setPixelColour(x, y, colour);
-
-        }
-    }
-}
-
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
     float xStepSize = (to.x - from.x)/numberOfSteps;
@@ -176,91 +111,6 @@ void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colou
     //strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
-void drawSubTextureTriangle(DrawingWindow &window, CanvasPoint a, CanvasPoint b, CanvasPoint c, TextureMap textureFile) {
-    // Interpolate left and right lines of canvas points
-    float maxLeftLine = max(abs(a.x - b.x), abs(a.y - b.y));
-    float maxRightLine = max(abs(a.x - c.x), abs(a.y - c.y));
-    float numberOfSteps = max(maxLeftLine, maxRightLine);
-    vector<CanvasPoint> left_line = interpolatePoints(a, b, numberOfSteps);
-    vector<CanvasPoint> right_line = interpolatePoints(a, c, numberOfSteps);
-
-    // Interpolate left and right lines of texture points
-    float maxLeftLine_texture = max(abs(a.texturePoint.x - b.texturePoint.x), abs(a.texturePoint.y - b.texturePoint.y));
-    float maxRightLine_texture = max(abs(a.texturePoint.x - c.texturePoint.x), abs(a.texturePoint.y - c.texturePoint.y));
-    float numberOfSteps_texture = max(maxLeftLine_texture, maxRightLine_texture);
-    vector<CanvasPoint> left_line_texture = interpolateTexturePoints(a.texturePoint, b.texturePoint, numberOfSteps_texture);
-    vector<CanvasPoint> right_line_texture = interpolateTexturePoints(a.texturePoint, c.texturePoint, numberOfSteps_texture);
-
-    // Iterate down y-axis to draw each line
-    for(int i = 0; i < left_line.size(); i++){
-        float fraction_down_line = (float)i/left_line.size();
-        int position_on_left_texture_line = round(fraction_down_line * numberOfSteps_texture);
-        int position_on_right_texture_line = round(fraction_down_line * numberOfSteps_texture);
-
-        CanvasPoint to = left_line[i];
-        CanvasPoint from = right_line[i];
-        float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
-        float xStepSize = (to.x - from.x)/numberOfSteps;
-        float yStepSize = (to.y - from.y)/numberOfSteps;
-        CanvasPoint to_texture = left_line_texture[position_on_left_texture_line];
-        CanvasPoint from_texture = right_line_texture[position_on_right_texture_line];
-
-        float numberOfSteps_texture = max(abs(to_texture.x - from_texture.x), abs(to_texture.y - from_texture.y));
-        float xStepSize_texture = (to_texture.x - from_texture.x)/numberOfSteps_texture;
-        float yStepSize_texture = (to_texture.y - from_texture.y)/numberOfSteps_texture;
-        for (float i=0.0; i<numberOfSteps; i++) {
-            float x = from.x + (xStepSize * i);
-            float y = from.y + (yStepSize * i);
-            float x_texture = from_texture.x + (xStepSize_texture * i);
-            float y_texture = from_texture.y + (yStepSize_texture * i);
-            window.setPixelColour(round(x), round(y), textureFile.pixels[y_texture * textureFile.width + x_texture]);
-        }
-    }
-}
-
-void textureMapTriangle(DrawingWindow &window, CanvasTriangle triangle, TextureMap textureFile) {
-    // Sort vertices into top, middle, bottom
-    if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
-    if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
-    if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
-
-    // Find "extra" point
-    float ratio = (float) (triangle.v1().y-triangle.v0().y)/(float) (triangle.v2().y-triangle.v0().y);
-    float extraX = (triangle.v2().x - triangle.v0().x) * ratio + triangle.v0().x;
-    CanvasPoint extra = CanvasPoint(extraX, triangle.v1().y);
-
-    float ratio_texture = (float) (triangle.v1().texturePoint.y-triangle.v0().texturePoint.y)/(float) (triangle.v2().texturePoint.y-triangle.v0().texturePoint.y);
-    float extraX_texture = (triangle.v2().texturePoint.x - triangle.v0().texturePoint.x) * ratio_texture + triangle.v0().texturePoint.x;
-    extra.texturePoint = TexturePoint(extraX_texture, triangle.v1().texturePoint.y);
-    //drawLine(window, CanvasPoint(extraX_texture, triangle.v1().texturePoint.y), CanvasPoint(triangle.v1().texturePoint.x, triangle.v1().texturePoint.y), Colour(255, 255, 255));
-
-    // Top triangle
-    drawSubTextureTriangle(window, triangle.v0(), extra, triangle.v1(), textureFile);
-
-    // Bottom triangle
-    drawSubTextureTriangle(window, triangle.v2(), extra, triangle.v1(), textureFile);
-
-    // White border
-    strokedTriangle(window, triangle, Colour(255, 255, 255));
-}
-
-void drawTextureShape(DrawingWindow &window) {
-    // Set up triangle for testing texture mapping
-    CanvasPoint cp1 = CanvasPoint(160, 10);
-    cp1.texturePoint = TexturePoint(195, 5);
-    CanvasPoint cp2 = CanvasPoint(300, 230);
-    cp2.texturePoint = TexturePoint(395, 380);
-    CanvasPoint cp3 = CanvasPoint(10, 150);
-    cp3.texturePoint = TexturePoint(65, 330);
-    CanvasTriangle triangle(cp1, cp2, cp3);
-    TextureMap textureFile("texture.ppm");
-    CanvasTriangle textureTriangle(CanvasPoint(195, 5), CanvasPoint(395, 380), CanvasPoint(65, 330));
-
-    strokedTriangle(window, textureTriangle, Colour(0, 255, 0));
-
-    textureMapTriangle(window, triangle, textureFile);
-}
-
 vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library) {
     ifstream file(objfile);
     char character;
@@ -332,27 +182,6 @@ vector<Colour> readMTLFile(string mtlfile) {
         getline(file, line2);
     }
     return colours;
-}
-
-CanvasPoint getCanvasIntersectionPoint(DrawingWindow &window, glm::vec3 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
-    float x = vertexPosition[0];
-    float y = vertexPosition[1];
-    float z = vertexPosition[2];
-
-    x = x - cameraPosition[0];
-    y = y - cameraPosition[1];
-    z = z - cameraPosition[2];
-
-    float u = focalLength * -x/z;
-    float v = focalLength * y/z;
-
-    u *= window.width;
-    v *= window.width;
-
-    u += window.width/2;
-    v += window.height/2;
-
-    return CanvasPoint(round(u), round(v));
 }
 
 CanvasPoint getCanvasIntersectionPointWithOrientation(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, glm::vec3 vertexPosition, float focalLength) {
@@ -500,7 +329,6 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
     cameraOrientation = glm::mat3(right, up, forward);
 }
 
-// Search through triangles and return closest intersected triangle
 RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> triangles) {
     RayTriangleIntersection closestIntersection = RayTriangleIntersection();
     float smallest_t = 999999;
@@ -532,14 +360,8 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     for (int x = 0; x < window.width; x++){
         for (int y = 0; y < window.height; y++){
             glm::vec3 rayDirection = glm::vec3(x, y, -2.0f);
-            rayDirection[0] = (rayDirection[0] - WIDTH/2.0f);
-            rayDirection[1] = (rayDirection[1] - HEIGHT/2.0f);
-
-            rayDirection[0] = rayDirection[0]/(WIDTH*2);
-            rayDirection[1] = rayDirection[1]/(WIDTH*2);
-
-            rayDirection[0] = -(rayDirection[0] * rayDirection[2]);
-            rayDirection[1] = rayDirection[1] * rayDirection[2];
+            rayDirection[0] = -((rayDirection[0] - WIDTH/2.0f)/(WIDTH*2)) * rayDirection[2];
+            rayDirection[1] = ((rayDirection[1] - HEIGHT/2.0f)/(WIDTH*2)) * rayDirection[2];
 
             rayDirection = glm::normalize(rayDirection * glm::inverse(cameraOrientation));
 
@@ -594,10 +416,6 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
 int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
-
-    //drawLine(window, CanvasPoint(window.width/2, 0), CanvasPoint(window.width/2, window.height), Colour(0, 255, 0));
-    //drawColourGradient(window);
-    //drawTextureShape(window);
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,

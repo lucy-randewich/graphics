@@ -19,12 +19,12 @@
 #include <string.h>
 #include <math.h>
 
-#define WIDTH 320*3
-#define HEIGHT 240*3
+#define WIDTH 320*2
+#define HEIGHT 240*2
 
 using namespace std;
 
-string renderer = "rasterised";
+string renderer = "ray_traced";
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -44,20 +44,6 @@ void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colo
 }
 
 vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float numberOfSteps) {
-    vector<CanvasPoint> linePoints;
-    float xDiff = to.x - from.x;
-    float yDiff = to.y - from.y;
-    float xStepSize = xDiff/numberOfSteps;
-    float yStepSize = yDiff/numberOfSteps;
-    for (float i=0.0; i<numberOfSteps; i++) {
-        float x = from.x + (xStepSize * i);
-        float y = from.y + (yStepSize * i);
-        linePoints.push_back(CanvasPoint(round(x), round(y)));
-    }
-    return linePoints;
-}
-
-vector<CanvasPoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfSteps) {
     vector<CanvasPoint> linePoints;
     float xDiff = to.x - from.x;
     float yDiff = to.y - from.y;
@@ -331,6 +317,7 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
 
 RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> triangles) {
     RayTriangleIntersection closestIntersection = RayTriangleIntersection();
+    closestIntersection.intersectionFound = false;
     float smallest_t = 999999;
     int index = 0;
     for (ModelTriangle triangle : triangles) {
@@ -345,9 +332,9 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::ve
 
         if((u>=0.0) && (u<=1.0) && (v>=0.0) && (v<=1.0) && ((u+v)<=1.0)){
             if((t < smallest_t) && t>0.0){
-                glm::vec3 intersection = triangle.vertices[0] + u * (triangle.vertices[1] - triangle.vertices[0]) + v * (triangle.vertices[2] - triangle.vertices[0]);
+                glm::vec3 intersection = triangle.vertices[0] + u * e0 + v * e1;
                 smallest_t = t;
-                closestIntersection = RayTriangleIntersection(intersection, t, triangle, index);
+                closestIntersection = RayTriangleIntersection(intersection, t, triangle, index, true);
             }
         }
         index++;
@@ -359,16 +346,26 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     // Loop through each pixel in image plane casting a ray from camera through pixel and onto scene
     for (int x = 0; x < window.width; x++){
         for (int y = 0; y < window.height; y++){
-            glm::vec3 rayDirection = glm::vec3(x, y, -2.0f);
-            rayDirection[0] = -((rayDirection[0] - WIDTH/2.0f)/(WIDTH*2)) * rayDirection[2];
-            rayDirection[1] = ((rayDirection[1] - HEIGHT/2.0f)/(WIDTH*2)) * rayDirection[2];
+            glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
+            rayDirection[0] = ((rayDirection[0] - WIDTH/2.0f)/(WIDTH*2.0f));
+            rayDirection[1] = -((rayDirection[1] - HEIGHT/2.0f)/(WIDTH*2.0f));
 
-            rayDirection = glm::normalize(rayDirection * glm::inverse(cameraOrientation));
+            rayDirection = rayDirection * glm::inverse(cameraOrientation);
 
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, rayDirection, triangles);
 
-            Colour colour = intersectionTriangle.intersectedTriangle.colour;
-            window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+            if(intersectionTriangle.intersectionFound) {
+                glm::vec3 lightsource = glm::vec3(0, 0.85, 0);
+                glm::vec3 shadowRay = lightsource - intersectionTriangle.intersectionPoint;
+
+                RayTriangleIntersection shadow_intersection = getClosestIntersection(shadowRay, intersectionTriangle.intersectionPoint, triangles);
+
+                if((!shadow_intersection.intersectionFound) || ((shadow_intersection.distanceFromCamera < glm::distance(lightsource, intersectionTriangle.intersectionPoint)) && intersectionTriangle.triangleIndex == shadow_intersection.triangleIndex)){
+                    Colour colour = intersectionTriangle.intersectedTriangle.colour;
+                    window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+                }
+
+            }
         }
     }
 }

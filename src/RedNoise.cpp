@@ -348,11 +348,15 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
 
                 RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(shadowRay), triangles);
 
+                Colour colour = intersectionTriangle.intersectedTriangle.colour;
+                float brightness = 1 - exp(-(5.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
+                cout << brightness << endl;
+
                 if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
-                    window.setPixelColour(x, y, 0);
+                    window.setPixelColour(x,y, 0);
+                    //window.setPixelColour(x, y, (255 << 24) + (int(colour.red*brightness) << 16) + (int(colour.green*brightness) << 8) + int(colour.blue*brightness));
                 }else {     // No shadow
-                    Colour colour = intersectionTriangle.intersectedTriangle.colour;
-                    window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+                    window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
                 }
 
             }

@@ -108,7 +108,8 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
     string line;
     string colour_name;
     Colour colour;
-    glm::vec3 p1, p2, p3;
+    glm::vec3 p0, p1, p2;
+    glm::vec3 normal;
 
     vector<glm::vec3> vertices;
     vector<glm::vec3> faces;
@@ -129,10 +130,14 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
                 v2 = stoi(tmpv2);
                 v3 = stoi(tmpv3);
 
-                p1 = vertices[v1-1];
-                p2 = vertices[v2-1];
-                p3 = vertices[v3-1];
-                triangles.push_back(ModelTriangle(p1, p2, p3, colour));
+                p0 = vertices[v1-1];
+                p1 = vertices[v2-1];
+                p2 = vertices[v3-1];
+
+                //normal = glm::cross(p1-p0, p2-p0);
+                //normal = glm::cross(p0-p1, p2-p1);
+                normal = glm::cross(p0-p2, p1-p2);
+                triangles.push_back(ModelTriangle(p0, p1, p2, colour, normal));
                 break;
             case 'u':
                 stream >> tmpv1 >> colour_name;
@@ -343,18 +348,24 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, glm::normalize(rayDirection), triangles);
 
             if(intersectionTriangle.intersectionFound) {
+                // Find shadow intersection
                 glm::vec3 shadowRay = lightsource - intersectionTriangle.intersectionPoint;
                 float distance = glm::distance(lightsource,intersectionTriangle.intersectionPoint);
-
                 RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(shadowRay), triangles);
 
+                // Calculate brightness for proximity lighting
                 Colour colour = intersectionTriangle.intersectedTriangle.colour;
-                float brightness = 1 - exp(-(5.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
-                cout << brightness << endl;
+                float proximity_brightness = 1 - exp(-(4.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
 
+                // Calculate angle of incidence between normal of triangle and light direction
+                float incidence_angle = glm::dot(glm::normalize(intersectionTriangle.intersectedTriangle.normal), glm::normalize(lightsource - intersectionTriangle.intersectionPoint));
+                //float incident_brightness = 1 - exp(-incidence_angle);
+
+                float brightness = 1 - exp(-(proximity_brightness + incidence_angle));
+
+                // Draw appropriate pixel values
                 if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
                     window.setPixelColour(x,y, 0);
-                    //window.setPixelColour(x, y, (255 << 24) + (int(colour.red*brightness) << 16) + (int(colour.green*brightness) << 8) + int(colour.blue*brightness));
                 }else {     // No shadow
                     window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
                 }
@@ -370,11 +381,11 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
         else if (event.key.keysym.sym == SDLK_2) renderer = "rasterised";
         else if (event.key.keysym.sym == SDLK_3) renderer = "ray_traced";
         else if (event.key.keysym.sym == SDLK_q) {
-            lightsource[1] = lightsource[1] + 0.1;
+            lightsource[1] = lightsource[1] + 0.05;
             cout << "lightsource is " << lightsource[0] << " " << lightsource[1] << " " << lightsource[2] << endl;
         }
         else if (event.key.keysym.sym == SDLK_a) {
-            lightsource[1] = lightsource[1] - 0.1;
+            lightsource[1] = lightsource[1] - 0.05;
             cout << "lightsource is " << lightsource[0] << " " << lightsource[1] << " " << lightsource[2] << endl;
         }
 		else if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
@@ -421,10 +432,11 @@ int main(int argc, char *argv[]) {
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
+    float scaleFactor = 0.15;
 
     // Read obj data from files
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", 0.15, colour_library);
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library);
 
     while (true) {
 		// We MUST poll for events - otherwise the window will freeze !

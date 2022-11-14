@@ -303,7 +303,7 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
     cameraOrientation = glm::mat3(right, up, forward);
 }
 
-RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> triangles) {
+RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> &triangles) {
     RayTriangleIntersection closestIntersection = RayTriangleIntersection();
     closestIntersection.intersectionFound = false;
     float smallest_t = 999999;
@@ -331,7 +331,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, glm::ve
     return closestIntersection;
 }
 
-void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles) {
+void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, glm::vec3 &lightsource) {
     for (float x = 0; x < window.width; x++){
         for (float y = 0; y < window.height; y++){
             glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
@@ -343,7 +343,6 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, glm::normalize(rayDirection), triangles);
 
             if(intersectionTriangle.intersectionFound) {
-                glm::vec3 lightsource = glm::vec3(0, 0.4, 0);
                 glm::vec3 shadowRay = lightsource - intersectionTriangle.intersectionPoint;
                 float distance = glm::distance(lightsource,intersectionTriangle.intersectionPoint);
 
@@ -361,11 +360,19 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     }
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
+void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, glm::vec3 &lightsource) {
 	if (event.type == SDL_KEYDOWN) {
         if (event.key.keysym.sym == SDLK_1) renderer = "wireframe";
         else if (event.key.keysym.sym == SDLK_2) renderer = "rasterised";
         else if (event.key.keysym.sym == SDLK_3) renderer = "ray_traced";
+        else if (event.key.keysym.sym == SDLK_q) {
+            lightsource[1] = lightsource[1] + 0.1;
+            cout << "lightsource is " << lightsource[0] << " " << lightsource[1] << " " << lightsource[2] << endl;
+        }
+        else if (event.key.keysym.sym == SDLK_a) {
+            lightsource[1] = lightsource[1] - 0.1;
+            cout << "lightsource is " << lightsource[0] << " " << lightsource[1] << " " << lightsource[2] << endl;
+        }
 		else if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
 		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.2;
 		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.2;
@@ -406,6 +413,7 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
+    glm::vec3 lightsource = glm::vec3(0, 0.4, 0);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
@@ -417,13 +425,13 @@ int main(int argc, char *argv[]) {
     while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) {
-            handleEvent(event, window, cameraPosition, cameraOrientation);
+            handleEvent(event, window, cameraPosition, cameraOrientation, lightsource);
         }
 
         window.clearPixels();
         if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
         else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles);
+        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsource);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

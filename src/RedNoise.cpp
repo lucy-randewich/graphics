@@ -339,37 +339,48 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
 void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, glm::vec3 &lightsource) {
     for (float x = 0; x < window.width; x++){
         for (float y = 0; y < window.height; y++){
+            // Calculate ray from camera to pixel
             glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
             rayDirection[0] = ((rayDirection[0] - WIDTH/2.0f)/(SCALER*FOCAL_LENGTH));
             rayDirection[1] = -((rayDirection[1] - HEIGHT/2.0f)/(SCALER*FOCAL_LENGTH));
-
             rayDirection = rayDirection * glm::inverse(cameraOrientation);
-
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, glm::normalize(rayDirection), triangles);
 
             if(intersectionTriangle.intersectionFound) {
                 // Find shadow intersection
-                glm::vec3 shadowRay = lightsource - intersectionTriangle.intersectionPoint;
+                glm::vec3 lightRay = lightsource - intersectionTriangle.intersectionPoint;
                 float distance = glm::distance(lightsource,intersectionTriangle.intersectionPoint);
-                RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(shadowRay), triangles);
+                RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
 
                 // Calculate brightness for proximity lighting
                 Colour colour = intersectionTriangle.intersectedTriangle.colour;
-                float proximity_brightness = 1 - exp(-(4.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
+                //float proximity_brightness = 1 - exp(-(4.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
+                float proximity_brightness = glm::min(float((5.0f/(7.0f * pow(distance, 2.0f) * M_PI))), 1.0f);
 
                 // Calculate angle of incidence between normal of triangle and light direction
                 float incidence_angle = glm::dot(glm::normalize(intersectionTriangle.intersectedTriangle.normal), glm::normalize(lightsource - intersectionTriangle.intersectionPoint));
-                //float incident_brightness = 1 - exp(-incidence_angle);
+                float incident_brightness = glm::max(incidence_angle, 0.0f);
 
-                float brightness = 1 - exp(-(proximity_brightness + incidence_angle));
+                // Calculate vector of reflection
+                glm::vec3 reflectedRay = lightRay - (2 * intersectionTriangle.intersectedTriangle.normal) * (glm::dot(glm::normalize(lightRay), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
+                float reflection_angle = glm::dot(glm::normalize(rayDirection), glm::normalize(reflectedRay));
+                float specular_spread = pow(reflection_angle, 256);
 
-                // Draw appropriate pixel values
-                if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
-                    window.setPixelColour(x,y, 0);
-                }else {     // No shadow
-                    window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
+                // Use promimity and incident brightness unless specular spread is greater
+                float brightness = glm::clamp((proximity_brightness * incident_brightness), 0.0f, 1.0f);
+                if (specular_spread > brightness){
+                    brightness = specular_spread;
                 }
 
+                // Set brightness to 0 if there's a shadow
+                if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
+                    brightness = 0;
+                }
+
+                // AMBIENT LIGHTING
+                brightness = glm::clamp(brightness, 0.4f, 1.0f);
+
+                window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
             }
         }
     }
@@ -428,7 +439,7 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
-    glm::vec3 lightsource = glm::vec3(0, 0.4, 0);
+    glm::vec3 lightsource = glm::vec3(0, 0.4, 0.05);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);

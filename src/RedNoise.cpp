@@ -325,7 +325,6 @@ vector<glm::vec3> getVertexNormals(vector<glm::vec3> vertices, vector<ModelTrian
         float count = 0.0f;
         glm::vec3 sum = {0, 0, 0};
         for (glm::vec3 normal : normalsToAverage){
-            //cout << sum.x << " " << sum.y << " " << sum.z << " plus " << normal.x << " " << normal.y << " " << normal.z << " " << endl;
             sum += normal;
             count ++;
         }
@@ -388,7 +387,7 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
     }
 
     // AMBIENT LIGHTING
-    brightness = glm::clamp(brightness, 0.2f, 1.0f);
+    brightness = glm::clamp(brightness, 0.15f, 1.0f);
 
     return brightness;
 }
@@ -428,11 +427,10 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
                 float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
                 float proportion_n1 = intersectionTriangle.u;
                 float proportion_n2 = intersectionTriangle.v;
-                cout << intersectionTriangle.v << endl;
-                glm::vec3 normal = (proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2);
-                //cout << normal.x << " " << normal.y << " " << normal.z << endl;
+                glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
 
                 float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, normal);
+                // Use below line to switch off phong shading
                 //float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
 
                 Colour colour = intersectionTriangle.intersectedTriangle.colour;
@@ -495,18 +493,29 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
-    glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.5);
-    //glm::vec3 lightsource = glm::vec3(0.0, 0.4, 0.0);
+    glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.8);
+    //glm::vec3 lightsource = glm::vec3(0.0, 0.5, 0.0);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
     float scaleFactor = 0.15;
+    // USE 0.001 scale for hackspace logo model
 
     // Read obj data from files
     vector<glm::vec3> vertices;
+    vector<glm::vec3> sphere_vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    //vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices);
-    vector<ModelTriangle> triangles = readOBJFile("sphere.obj", scaleFactor, colour_library, vertices);
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices);
+    vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor, colour_library, sphere_vertices);
+
+    for(ModelTriangle triangle : sphere_triangles){
+        triangles.push_back(triangle);
+    }
+
+    for(glm::vec3 vertex : sphere_vertices){
+        vertices.push_back(vertex);
+    }
+
     vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
 
     while (true) {

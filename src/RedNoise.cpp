@@ -99,7 +99,7 @@ void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colou
     //strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
-vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library) {
+vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices) {
     ifstream file(objfile);
     char character;
     float x,y,z;
@@ -108,11 +108,10 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
     string line;
     string colour_name;
     Colour colour;
+    colour.name = " ";
     glm::vec3 p0, p1, p2;
-    glm::vec3 normal;
+    glm::vec3 face_normal;
 
-    vector<glm::vec3> vertices;
-    vector<glm::vec3> faces;
     vector<ModelTriangle> triangles;
 
     // Add all vertices to vector and triangles to vector
@@ -134,10 +133,11 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
                 p1 = vertices[v2-1];
                 p2 = vertices[v3-1];
 
-                //normal = glm::cross(p1-p0, p2-p0);
-                //normal = glm::cross(p0-p1, p2-p1);
-                normal = glm::cross(p0-p2, p1-p2);
-                triangles.push_back(ModelTriangle(p0, p1, p2, colour, normal));
+                if (colour.name == " "){
+                    colour = Colour(0xFF, 0x00, 0x00);
+                }
+                face_normal = glm::cross(p0-p2, p1-p2);
+                triangles.push_back(ModelTriangle(p0, p1, p2, colour, face_normal));
                 break;
             case 'u':
                 stream >> tmpv1 >> colour_name;
@@ -308,6 +308,32 @@ void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &ca
     cameraOrientation = glm::mat3(right, up, forward);
 }
 
+vector<glm::vec3> getVertexNormals(vector<glm::vec3> vertices, vector<ModelTriangle> triangles){
+    vector<glm::vec3> vertex_normals;
+
+    for (glm::vec3 vertex : vertices){
+        // Find normals of all triangles which use this vertex
+        vector<glm::vec3> normalsToAverage;
+        for (ModelTriangle triangle : triangles){
+            for(glm::vec3 triangleVertex : triangle.vertices){
+                if (vertex == triangleVertex){
+                    normalsToAverage.push_back(triangle.normal);
+                }
+            }
+        }
+        // Average normals of these triangles
+        float count = 0.0f;
+        glm::vec3 sum = {0, 0, 0};
+        for (glm::vec3 normal : normalsToAverage){
+            //cout << sum.x << " " << sum.y << " " << sum.z << " plus " << normal.x << " " << normal.y << " " << normal.z << " " << endl;
+            sum += normal;
+            count ++;
+        }
+        vertex_normals.push_back(glm::normalize(sum/count));
+    }
+    return vertex_normals;
+}
+
 RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::vec3 rayDirection, vector<ModelTriangle> &triangles) {
     RayTriangleIntersection closestIntersection = RayTriangleIntersection();
     closestIntersection.intersectionFound = false;
@@ -328,7 +354,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
                 glm::vec3 intersection = (triangle.vertices[0] + (u * e0) + (v * e1));
                 //glm::vec3 intersection = (t * rayDirection) + cameraPosition;
                 smallest_t = t;
-                closestIntersection = RayTriangleIntersection(intersection, t, triangle, index, true);
+                closestIntersection = RayTriangleIntersection(intersection, t, u, v, triangle, index, true);
             }
         }
         index++;
@@ -336,7 +362,38 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
     return closestIntersection;
 }
 
-void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, glm::vec3 &lightsource) {
+float getBrightness(float &distance, RayTriangleIntersection &intersectionTriangle, RayTriangleIntersection &shadow_intersection, glm::vec3 &lightsource, glm::vec3 &lightRay, glm::vec3 &rayDirection, glm::vec3 &normal){
+    // PROXIMITY LIGHTING
+    float proximity_brightness = glm::min(float((5.0f/(7.0f * pow(distance, 2.0f) * M_PI))), 1.0f);
+
+    // INCIDENCE LIGHTING
+    float incidence_angle = glm::dot(glm::normalize(normal), glm::normalize(lightsource - intersectionTriangle.intersectionPoint));
+    float incident_brightness = glm::max(incidence_angle, 0.0f);
+
+    // REFLECTION
+    glm::vec3 reflectedRay = lightRay - (2 * normal) * (glm::dot(glm::normalize(lightRay), glm::normalize(normal)));
+    float reflection_angle = glm::dot(glm::normalize(rayDirection), glm::normalize(reflectedRay));
+    float specular_spread = pow(reflection_angle, 256);
+
+    // Combine lighting types
+    float brightness = glm::clamp((proximity_brightness * incident_brightness), 0.0f, 1.0f);
+
+    if (specular_spread > brightness){
+        brightness = specular_spread;
+    }
+
+    // SHADOW
+    if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
+        brightness = 0;
+    }
+
+    // AMBIENT LIGHTING
+    brightness = glm::clamp(brightness, 0.2f, 1.0f);
+
+    return brightness;
+}
+
+void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, glm::vec3 &lightsource, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals) {
     for (float x = 0; x < window.width; x++){
         for (float y = 0; y < window.height; y++){
             // Calculate ray from camera to pixel
@@ -352,34 +409,33 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
                 float distance = glm::distance(lightsource,intersectionTriangle.intersectionPoint);
                 RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
 
-                // Calculate brightness for proximity lighting
+                // Get three normals of vertices of intersected triangle
+                glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
+                glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
+                glm::vec3 v2 = intersectionTriangle.intersectedTriangle.vertices[2];
+                glm::vec3 n0, n1, n2;
+                for(int i = 0; i < vertices.size(); i++){
+                    if (vertices[i].x == v0.x && vertices[i].y == v0.y && vertices[i].z == v0.z){
+                        n0 = vertex_normals[i];
+                    }else if(vertices[i].x == v1.x && vertices[i].y == v1.y && vertices[i].z == v1.z){
+                        n1 = vertex_normals[i];
+                    }else if(vertices[i].x == v2.x && vertices[i].y == v2.y && vertices[i].z == v2.z){
+                        n2 = vertex_normals[i];
+                    }
+                }
+
+                // Interpolate normal from vertex normals
+                float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
+                float proportion_n1 = intersectionTriangle.u;
+                float proportion_n2 = intersectionTriangle.v;
+                cout << intersectionTriangle.v << endl;
+                glm::vec3 normal = (proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2);
+                //cout << normal.x << " " << normal.y << " " << normal.z << endl;
+
+                float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, normal);
+                //float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
+
                 Colour colour = intersectionTriangle.intersectedTriangle.colour;
-                //float proximity_brightness = 1 - exp(-(4.0f/(7.0f * pow(distance, 2.0f) * M_PI)));
-                float proximity_brightness = glm::min(float((5.0f/(7.0f * pow(distance, 2.0f) * M_PI))), 1.0f);
-
-                // Calculate angle of incidence between normal of triangle and light direction
-                float incidence_angle = glm::dot(glm::normalize(intersectionTriangle.intersectedTriangle.normal), glm::normalize(lightsource - intersectionTriangle.intersectionPoint));
-                float incident_brightness = glm::max(incidence_angle, 0.0f);
-
-                // Calculate vector of reflection
-                glm::vec3 reflectedRay = lightRay - (2 * intersectionTriangle.intersectedTriangle.normal) * (glm::dot(glm::normalize(lightRay), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
-                float reflection_angle = glm::dot(glm::normalize(rayDirection), glm::normalize(reflectedRay));
-                float specular_spread = pow(reflection_angle, 256);
-
-                // Use promimity and incident brightness unless specular spread is greater
-                float brightness = glm::clamp((proximity_brightness * incident_brightness), 0.0f, 1.0f);
-                if (specular_spread > brightness){
-                    brightness = specular_spread;
-                }
-
-                // Set brightness to 0 if there's a shadow
-                if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
-                    brightness = 0;
-                }
-
-                // AMBIENT LIGHTING
-                brightness = glm::clamp(brightness, 0.4f, 1.0f);
-
                 window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
             }
         }
@@ -439,15 +495,19 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
-    glm::vec3 lightsource = glm::vec3(0, 0.4, 0.05);
+    glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.5);
+    //glm::vec3 lightsource = glm::vec3(0.0, 0.4, 0.0);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
     float scaleFactor = 0.15;
 
     // Read obj data from files
+    vector<glm::vec3> vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library);
+    //vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices);
+    vector<ModelTriangle> triangles = readOBJFile("sphere.obj", scaleFactor, colour_library, vertices);
+    vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
 
     while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
@@ -458,7 +518,7 @@ int main(int argc, char *argv[]) {
         window.clearPixels();
         if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
         else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsource);
+        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsource, vertices, vertexNormals);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

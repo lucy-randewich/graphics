@@ -511,7 +511,6 @@ int main(int argc, char *argv[]) {
     for(ModelTriangle triangle : sphere_triangles){
         triangles.push_back(triangle);
     }
-
     for(glm::vec3 vertex : sphere_vertices){
         vertices.push_back(vertex);
     }

@@ -2,25 +2,18 @@
 #include <DrawingWindow.h>
 #include <CanvasPoint.h>
 #include <Colour.h>
-#include <CanvasTriangle.h>
-#include <TextureMap.h>
 #include <ModelTriangle.h>
 #include <RayTriangleIntersection.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
-#include <Utils.h>
-#include <fstream>
 #include <vector>
 #include <iostream>
-#include <fstream>
 #include <string>
 #include <sstream>
-#include <stdio.h>
-#include <string.h>
 #include <math.h>
 
-#define WIDTH 320.0f*3
-#define HEIGHT 240.0f*3
+#define WIDTH (320.0f*3)
+#define HEIGHT (240.0f*3)
 #define FOCAL_LENGTH 2.0f
 #define SCALER WIDTH
 
@@ -99,7 +92,7 @@ void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colou
     //strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
-vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices) {
+vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, float shift) {
     ifstream file(objfile);
     char character;
     float x,y,z;
@@ -121,7 +114,7 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
         switch (character) {
             case 'v':
                 stream >> x >> y >> z;
-                vertices.push_back({x * scale_factor, y * scale_factor, z * scale_factor});
+                vertices.push_back({(x * scale_factor)+shift, (y * scale_factor)-shift, z * scale_factor});
                 break;
             case 'f':
                 stream >> tmpv1 >> tmpv2 >> tmpv3;
@@ -493,8 +486,8 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
-    glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.8);
-    //glm::vec3 lightsource = glm::vec3(0.0, 0.5, 0.0);
+    //glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.8);
+    glm::vec3 lightsource = glm::vec3(0.0, 0.3, 0.0);
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
@@ -505,8 +498,8 @@ int main(int argc, char *argv[]) {
     vector<glm::vec3> vertices;
     vector<glm::vec3> sphere_vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices);
-    vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor, colour_library, sphere_vertices);
+    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+    vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
 
     for(ModelTriangle triangle : sphere_triangles){
         triangles.push_back(triangle);

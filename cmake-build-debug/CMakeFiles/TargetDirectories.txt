@@ -1,0 +1,3 @@
+/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug/CMakeFiles/RedNoise.dir
+/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug/CMakeFiles/rebuild_cache.dir

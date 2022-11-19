@@ -11,6 +11,7 @@
 #include <string>
 #include <sstream>
 #include <math.h>
+#include <thread>
 
 #define WIDTH (320.0f*3)
 #define HEIGHT (240.0f*3)
@@ -20,6 +21,10 @@
 using namespace std;
 
 string renderer = "ray_traced";
+bool soft_shadows = true;
+bool sphere = false;
+bool mirror = false;
+vector<glm::vec3> lightsources;
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -342,7 +347,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
         float v = possibleSolution[2];
 
         if((u>=0.0) && (u<=1.0) && (v>=0.0) && (v<=1.0) && ((u+v)<=1.0)){
-            if((t < smallest_t) && t>0.0005){
+            if((t < smallest_t) && t>0.005){
                 glm::vec3 intersection = (triangle.vertices[0] + (u * e0) + (v * e1));
                 //glm::vec3 intersection = (t * rayDirection) + cameraPosition;
                 smallest_t = t;
@@ -352,6 +357,30 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
         index++;
     }
     return closestIntersection;
+}
+
+glm::vec3 getNormal(RayTriangleIntersection intersectionTriangle, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals){
+    // Get three normals of vertices of intersected triangle
+    glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
+    glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
+    glm::vec3 v2 = intersectionTriangle.intersectedTriangle.vertices[2];
+    glm::vec3 n0, n1, n2;
+    for(size_t i = 0; i < vertices.size(); i++){
+        if (vertices[i].x == v0.x && vertices[i].y == v0.y && vertices[i].z == v0.z){
+            n0 = vertex_normals[i];
+        }else if(vertices[i].x == v1.x && vertices[i].y == v1.y && vertices[i].z == v1.z){
+            n1 = vertex_normals[i];
+        }else if(vertices[i].x == v2.x && vertices[i].y == v2.y && vertices[i].z == v2.z){
+            n2 = vertex_normals[i];
+        }
+    }
+
+    // Interpolate normal from vertex normals
+    float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
+    float proportion_n1 = intersectionTriangle.u;
+    float proportion_n2 = intersectionTriangle.v;
+    glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
+    return normal;
 }
 
 float getBrightness(float &distance, RayTriangleIntersection &intersectionTriangle, RayTriangleIntersection &shadow_intersection, glm::vec3 &lightsource, glm::vec3 &lightRay, glm::vec3 &rayDirection, glm::vec3 &normal){
@@ -385,9 +414,9 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
     return brightness;
 }
 
-void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, glm::vec3 &lightsource, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals) {
-    for (float x = 0; x < window.width; x++){
-        for (float y = 0; y < window.height; y++){
+void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, vector<glm::vec3> &lightsources, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals) {
+    for (size_t x = 0; x < window.width; x++){
+        for (size_t y = 0; y < window.height; y++){
             // Calculate ray from camera to pixel
             glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
             rayDirection[0] = ((rayDirection[0] - WIDTH/2.0f)/(SCALER*FOCAL_LENGTH));
@@ -396,38 +425,32 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
             RayTriangleIntersection intersectionTriangle = getClosestIntersection(cameraPosition, glm::normalize(rayDirection), triangles);
 
             if(intersectionTriangle.intersectionFound) {
-                // Find shadow intersection
-                glm::vec3 lightRay = lightsource - intersectionTriangle.intersectionPoint;
-                float distance = glm::distance(lightsource,intersectionTriangle.intersectionPoint);
-                RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
+                Colour colour = intersectionTriangle.intersectedTriangle.colour;
+                glm::vec3 normal = getNormal(intersectionTriangle, vertices, vertex_normals);
 
-                // Get three normals of vertices of intersected triangle
-                glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
-                glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
-                glm::vec3 v2 = intersectionTriangle.intersectedTriangle.vertices[2];
-                glm::vec3 n0, n1, n2;
-                for(int i = 0; i < vertices.size(); i++){
-                    if (vertices[i].x == v0.x && vertices[i].y == v0.y && vertices[i].z == v0.z){
-                        n0 = vertex_normals[i];
-                    }else if(vertices[i].x == v1.x && vertices[i].y == v1.y && vertices[i].z == v1.z){
-                        n1 = vertex_normals[i];
-                    }else if(vertices[i].x == v2.x && vertices[i].y == v2.y && vertices[i].z == v2.z){
-                        n2 = vertex_normals[i];
+                if(mirror){
+                    if(intersectionTriangle.triangleIndex == 26 || intersectionTriangle.triangleIndex == 21){
+                        glm::vec3 reflected_ray = rayDirection - (2 * normal) * (glm::dot(glm::normalize(rayDirection), glm::normalize(normal)));
+                        RayTriangleIntersection reflection_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, reflected_ray, triangles);
+                        // Change colour to colour of reflection intersection surface
+                        colour = reflection_intersection.intersectedTriangle.colour;
                     }
                 }
 
-                // Interpolate normal from vertex normals
-                float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
-                float proportion_n1 = intersectionTriangle.u;
-                float proportion_n2 = intersectionTriangle.v;
-                glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
+                // Find shadow intersection
+                float brightness = 0;
+                for (glm::vec3 light : lightsources){
+                    glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
+                    float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
+                    RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
+                    brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
+                }
+                brightness = brightness/lightsources.size();
 
-                float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, normal);
-                // Use below line to switch off phong shading
-                //float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
-
-                Colour colour = intersectionTriangle.intersectedTriangle.colour;
                 window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
+
+                // Use below line to switch off phong shading
+                // float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
             }
         }
     }
@@ -488,6 +511,16 @@ int main(int argc, char *argv[]) {
     glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 3.5);
     //glm::vec3 lightsource = glm::vec3(0.1, 0.4, 0.8);
     glm::vec3 lightsource = glm::vec3(0.0, 0.3, 0.0);
+    lightsources.push_back(lightsource);
+
+    if(soft_shadows) {
+        for (int i = 0; i < 20; i++){
+            lightsource.x += 0.005;
+            lightsource.y += 0.01;
+            lightsources.push_back(lightsource);
+        }
+    }
+
     glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
                                             0, 1, 0,
                                             0, 0, 1);
@@ -499,14 +532,22 @@ int main(int argc, char *argv[]) {
     vector<glm::vec3> sphere_vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
-    vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
 
-    for(ModelTriangle triangle : sphere_triangles){
-        triangles.push_back(triangle);
+    if(sphere){
+        vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
+        for(ModelTriangle triangle : sphere_triangles){triangles.push_back(triangle);}
+        for(glm::vec3 vertex : sphere_vertices){vertices.push_back(vertex);}
     }
-    for(glm::vec3 vertex : sphere_vertices){
-        vertices.push_back(vertex);
+
+    // Bump forwards the two triangles on front face of blue object
+    /*
+    ModelTriangle blueTriangle1 = triangles[33];
+    ModelTriangle blueTriangle2 = triangles[38];
+    for (int i = 0; i <=2; i++){
+        cout << triangles[33].vertices[i].x/scaleFactor << " " << triangles[33].vertices[i].y/scaleFactor << " " << triangles[33].vertices[i].z/scaleFactor << endl;
+        cout << triangles[38].vertices[i].x/scaleFactor << " " << triangles[38].vertices[i].y/scaleFactor << " " << triangles[38].vertices[i].z/scaleFactor << endl;
     }
+     */
 
     vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
 
@@ -519,7 +560,7 @@ int main(int argc, char *argv[]) {
         window.clearPixels();
         if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
         else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsource, vertices, vertexNormals);
+        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

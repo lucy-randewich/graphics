@@ -21,9 +21,11 @@
 using namespace std;
 
 string renderer = "ray_traced";
-bool soft_shadows = true;
+bool soft_shadows = false;
 bool sphere = false;
-bool mirror = false;
+bool mirror = true;
+bool phong = true;
+bool glass = false;
 vector<glm::vec3> lightsources;
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
@@ -55,46 +57,6 @@ vector<CanvasPoint> interpolatePoints(CanvasPoint from, CanvasPoint to, float nu
         linePoints.push_back(CanvasPoint(round(x), round(y)));
     }
     return linePoints;
-}
-
-void filledTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colour) {
-    // Sort vertices into top, middle, bottom
-    if(triangle.v0().y > triangle.v1().y) swap(triangle.v0(), triangle.v1());
-    if(triangle.v0().y > triangle.v2().y) swap(triangle.v0(), triangle.v2());
-    if(triangle.v1().y > triangle.v2().y) swap(triangle.v1(), triangle.v2());
-
-    // Divide triangle in half horizontally - find "extra" point
-    int extraY = triangle.v1().y;
-    int a_x = triangle.v0().x;
-    int a_y = triangle.v0().y;
-    int c_x = triangle.v2().x;
-    int c_y = triangle.v2().y;
-
-    float ratio = (float) (extraY-a_y)/(float) (c_y-a_y);
-    float extraX = (c_x - a_x) * ratio + a_x;
-
-    // Top triangle
-    float maxLeftLine = max(abs(triangle.v0().x - extraX), abs(triangle.v0().y - extraY));
-    float maxRightLine = max(abs(triangle.v0().x - triangle.v1().x), abs(triangle.v0().y - triangle.v1().y));
-    float numberOfSteps = max(maxLeftLine, maxRightLine);
-    vector<CanvasPoint> left_line = interpolatePoints(triangle.v0(), CanvasPoint(extraX, extraY), numberOfSteps);
-    vector<CanvasPoint> right_line = interpolatePoints(triangle.v0(), triangle.v1(), numberOfSteps);
-    for(int i = 0; i < left_line.size(); i++){
-        drawLine(window, left_line[i], right_line[i], colour);
-    }
-
-    // Bottom triangle
-    float maxLeftLine2 = max(abs(extraX - triangle.v2().x), abs(extraY - triangle.v2().y));
-    float maxRightLine2 = max(abs(triangle.v1().x - triangle.v2().x), abs(triangle.v1().y - triangle.v2().y));
-    float numberOfSteps2 = max(maxLeftLine2, maxRightLine2);
-    vector<CanvasPoint> left_line_2 = interpolatePoints(CanvasPoint(extraX, extraY), triangle.v2(), numberOfSteps2);
-    vector<CanvasPoint> right_line_2 = interpolatePoints(triangle.v1(), triangle.v2(), numberOfSteps2);
-    for(int i = 0; i < left_line_2.size(); i++){
-        drawLine(window, left_line_2[i], right_line_2[i], colour);
-    }
-
-    // White border
-    //strokedTriangle(window, triangle, Colour(255, 255, 255));
 }
 
 vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, float shift) {
@@ -429,11 +391,48 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
                 glm::vec3 normal = getNormal(intersectionTriangle, vertices, vertex_normals);
 
                 if(mirror){
-                    if(intersectionTriangle.triangleIndex == 26 || intersectionTriangle.triangleIndex == 21){
-                        glm::vec3 reflected_ray = rayDirection - (2 * normal) * (glm::dot(glm::normalize(rayDirection), glm::normalize(normal)));
+                    if(intersectionTriangle.triangleIndex == 33 || intersectionTriangle.triangleIndex == 38){
+                        glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
                         RayTriangleIntersection reflection_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, reflected_ray, triangles);
-                        // Change colour to colour of reflection intersection surface
                         colour = reflection_intersection.intersectedTriangle.colour;
+                    }
+                }
+
+                if(glass){
+                    if(intersectionTriangle.intersectedTriangle.colour.name == "Red"){
+                        RayTriangleIntersection final_intersection;
+                        float cosI = glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal));;
+                        float n1, n2, n;
+                        if(cosI > 0.0){
+                            n1 = 1.0;
+                            n2 = 1.52; // Refractive index
+                            normal = -normal;
+                        }else{
+                            n1 = 1.52; // Refractive index
+                            n2 = 1.0;
+                            cosI = -cosI;
+                        }
+
+                        n = n1/n2;
+                        double sinT2 = n*n * (1.0 - cosI * cosI);
+                        double cosT = sqrt(1.0 - sinT2);
+
+                        // Fresnel equations
+                        double rn = (n1 * cosI - n2 * cosT)/(n1 * cosI + n2 * cosT);
+                        double rt = (n2 * cosI - n1 * cosT)/(n2 * cosI + n2 * cosT);
+                        rn *= rn;
+                        rt *= rt;
+                        double refl = (rn + rt)*0.5;
+                        double trans = 1.0 - refl;
+                        if(n == 1.0) {
+                            final_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, rayDirection, triangles);
+                        }else{
+                            // Direction of ray out of box
+                            glm::vec3 dir = n * glm::normalize(rayDirection) + (n * cosI - cosT) * glm::normalize(normal);
+                            final_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, dir, triangles);
+                        }
+                        colour = final_intersection.intersectedTriangle.colour;
+
                     }
                 }
 
@@ -443,14 +442,15 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
                     glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
                     float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
                     RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
-                    brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
+                    if(phong){
+                        brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
+                    }else{
+                        brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
+                    }
                 }
+
                 brightness = brightness/lightsources.size();
-
                 window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
-
-                // Use below line to switch off phong shading
-                // float brightness = getBrightness(distance, intersectionTriangle, shadow_intersection, lightsource, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
             }
         }
     }
@@ -461,6 +461,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
         if (event.key.keysym.sym == SDLK_1) renderer = "wireframe";
         else if (event.key.keysym.sym == SDLK_2) renderer = "rasterised";
         else if (event.key.keysym.sym == SDLK_3) renderer = "ray_traced";
+        else if (event.key.keysym.sym == SDLK_SPACE) phong = !phong;
         else if (event.key.keysym.sym == SDLK_q) {
             lightsource[1] = lightsource[1] + 0.05;
             cout << "lightsource is " << lightsource[0] << " " << lightsource[1] << " " << lightsource[2] << endl;
@@ -489,14 +490,6 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
                                                 0, -sin(theta), cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
-        }else if (event.key.keysym.sym == SDLK_u) {
-            CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
-            Colour colour(rand()%256, rand()%256, rand()%256);
-            strokedTriangle(window, triangle, colour);
-        }else if (event.key.keysym.sym == SDLK_f) {
-            CanvasTriangle triangle(CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height), CanvasPoint(rand()%window.width, rand()%window.height));
-            Colour colour(rand()%256, rand()%256, rand()%256);
-            filledTriangle(window, triangle, colour);
         }
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -538,16 +531,6 @@ int main(int argc, char *argv[]) {
         for(ModelTriangle triangle : sphere_triangles){triangles.push_back(triangle);}
         for(glm::vec3 vertex : sphere_vertices){vertices.push_back(vertex);}
     }
-
-    // Bump forwards the two triangles on front face of blue object
-    /*
-    ModelTriangle blueTriangle1 = triangles[33];
-    ModelTriangle blueTriangle2 = triangles[38];
-    for (int i = 0; i <=2; i++){
-        cout << triangles[33].vertices[i].x/scaleFactor << " " << triangles[33].vertices[i].y/scaleFactor << " " << triangles[33].vertices[i].z/scaleFactor << endl;
-        cout << triangles[38].vertices[i].x/scaleFactor << " " << triangles[38].vertices[i].y/scaleFactor << " " << triangles[38].vertices[i].z/scaleFactor << endl;
-    }
-     */
 
     vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
 

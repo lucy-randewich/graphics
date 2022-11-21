@@ -403,7 +403,6 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::ve
     }
 
     if(intersectionTriangle.intersectedMaterial == "glass"){
-        //float refractive_index = 1.52f;
         float refractive_index = 1.52f;
         float cosI = glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal));;
         float cosi = glm::clamp(-1.0f, 1.0f, cosI);
@@ -417,11 +416,24 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::ve
         glm::vec3 bias = 0.0001f * glm::normalize(intersectionTriangle.intersectedTriangle.normal);
         glm::vec3 refractionRayOrig = outside ? intersectionTriangle.intersectionPoint - bias : intersectionTriangle.intersectionPoint + bias;
 
-        //colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, glm::normalize(refracted_ray), brightness);
+        colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, glm::normalize(refracted_ray), brightness);
 
-        RayTriangleIntersection refraction_ray_intersection = getClosestIntersection(refractionRayOrig, glm::normalize(refracted_ray), triangles);
-        RayTriangleIntersection final_intersection = getClosestIntersection(refraction_ray_intersection.intersectionPoint, glm::normalize(refracted_ray), triangles);
-        colour = final_intersection.intersectedTriangle.colour;
+        //RayTriangleIntersection refraction_ray_intersection = getClosestIntersection(refractionRayOrig, glm::normalize(refracted_ray), triangles);
+        //RayTriangleIntersection final_intersection = getClosestIntersection(refraction_ray_intersection.intersectionPoint, glm::normalize(refracted_ray), triangles);
+        //colour = final_intersection.intersectedTriangle.colour;
+
+        // Incorporate brightness of glass object itself
+        for (glm::vec3 light : lightsources){
+            glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
+            float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
+            RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
+            if(phong){
+                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
+            }else{
+                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
+            }
+        }
+        brightness = glm::clamp((brightness/lightsources.size())/2, 0.0f, 1.0f);
     }
 
     return colour;

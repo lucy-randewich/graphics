@@ -13,14 +13,14 @@
 #include <math.h>
 #include <thread>
 
-#define WIDTH (320.0f*3)
-#define HEIGHT (240.0f*3)
+#define WIDTH (320.0f)*3.0f
+#define HEIGHT (240.0f)*3.0f
 #define FOCAL_LENGTH 2.0f
 #define SCALER WIDTH
 
 using namespace std;
 
-string renderer = "ray_traced";
+string renderer = "wireframe";
 bool soft_shadows = false;
 bool sphere = false;
 bool mirror = false;
@@ -295,7 +295,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
         float v = possibleSolution[2];
 
         if((u>=0.0) && (u<=1.0) && (v>=0.0) && (v<=1.0) && ((u+v)<=1.0)){
-            if((t < smallest_t) && t>0.005){
+            if((t < smallest_t) && t>0.000001){
                 glm::vec3 intersection = (triangle.vertices[0] + (u * e0) + (v * e1));
                 smallest_t = t;
                 closestIntersection = RayTriangleIntersection(intersection, t, u, v, triangle, index, true, triangle.material);
@@ -351,7 +351,7 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
     }
 
     // SHADOW
-    if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex)){
+    if ((shadow_intersection.intersectionFound) && (shadow_intersection.distanceFromCamera < distance) && (intersectionTriangle.triangleIndex != shadow_intersection.triangleIndex) && shadow_intersection.intersectedTriangle.material != "glass"){
         brightness = 0;
     }
 
@@ -361,11 +361,22 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
     return brightness;
 }
 
+glm::vec3 refractt(const glm::vec3 &I, const glm::vec3 &N, const float &ior){
+    float cosi = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
+    float etai = 1, etat = ior;
+    glm::vec3 n = N;
+    if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; }
+    float eta = etai / etat;
+    float k = 1 - eta * eta * (1 - cosi * cosi);
+    glm::vec3 direction =  k < 0 ? glm::vec3(0,0,0) : eta * I + (eta * cosi - sqrtf(k)) * n;
+    return direction;
+}
+
 void fresnel(const glm::vec3 &I, const glm::vec3 &N, const float &ior, float &kr){
     float cosi = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
     float etai = 1, etat = ior;
     if (cosi > 0) { std::swap(etai, etat); }
-    float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi));
+    float sint = etai / etat * sqrtf(max(0.f, 1 - cosi * cosi));
     if (sint >= 1) {
         kr = 1;
     }
@@ -378,8 +389,13 @@ void fresnel(const glm::vec3 &I, const glm::vec3 &N, const float &ior, float &kr
     }
 }
 
+glm::vec3 reflectt(const glm::vec3 &I, const glm::vec3 &N)
+{
+    return I - 2 * glm::dot(I, N)* N;
+}
+
 Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals, vector<ModelTriangle> &triangles, glm::vec3 rayDirection, float &brightness){
-    RayTriangleIntersection intersectionTriangle = getClosestIntersection(startPoint, glm::normalize(rayDirection), triangles);
+    RayTriangleIntersection intersectionTriangle = getClosestIntersection(startPoint, rayDirection, triangles);
     Colour colour = intersectionTriangle.intersectedTriangle.colour;
     glm::vec3 normal = getNormal(intersectionTriangle, vertices, vertex_normals);
 
@@ -395,7 +411,7 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::ve
             brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
         }
     }
-    brightness = glm::clamp(brightness/lightsources.size(), 0.0f, 1.0f);
+    brightness = glm::clamp(brightness/lightsources.size(), 0.2f, 1.0f);
 
     if(intersectionTriangle.intersectedMaterial == "mirror"){
         glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
@@ -403,37 +419,30 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::ve
     }
 
     if(intersectionTriangle.intersectedMaterial == "glass"){
-        float refractive_index = 1.52f;
-        float cosI = glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal));;
-        float cosi = glm::clamp(-1.0f, 1.0f, cosI);
-        float etai = 1, etat = refractive_index;
-        glm::vec3 n = intersectionTriangle.intersectedTriangle.normal;
-        if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -intersectionTriangle.intersectedTriangle.normal; }
-        float eta = etai / etat;
-        float k = 1 - eta * eta * (1 - cosi * cosi);
-        glm::vec3 refracted_ray = k < 0 ? glm::vec3{0,0,0} : eta * rayDirection + (eta * cosi - sqrtf(k)) * n;
-        bool outside = cosI < 0;
-        glm::vec3 bias = 0.0001f * glm::normalize(intersectionTriangle.intersectedTriangle.normal);
+
+        float refractive_index = 2.0f;
+
+        bool outside = glm::dot(intersectionTriangle.intersectedTriangle.normal, glm::normalize(rayDirection)) < 0.0f;
+        float kr;
+        fresnel(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index, kr);
+        glm::vec3 bias = 0.0001f * intersectionTriangle.intersectedTriangle.normal;
         glm::vec3 refractionRayOrig = outside ? intersectionTriangle.intersectionPoint - bias : intersectionTriangle.intersectionPoint + bias;
 
-        colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, glm::normalize(refracted_ray), brightness);
-
-        //RayTriangleIntersection refraction_ray_intersection = getClosestIntersection(refractionRayOrig, glm::normalize(refracted_ray), triangles);
-        //RayTriangleIntersection final_intersection = getClosestIntersection(refraction_ray_intersection.intersectionPoint, glm::normalize(refracted_ray), triangles);
-        //colour = final_intersection.intersectedTriangle.colour;
-
-        // Incorporate brightness of glass object itself
-        for (glm::vec3 light : lightsources){
-            glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
-            float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
-            RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
-            if(phong){
-                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
-            }else{
-                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
-            }
+        if(kr < 1){ // refract
+            glm::vec3 refractionDirection = glm::normalize(refractt(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index));
+            colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, refractionDirection, brightness);
+        }else{  // total internal reflection
+            glm::vec3 reflectionRayOrig = outside ? intersectionTriangle.intersectionPoint + bias : intersectionTriangle.intersectionPoint - bias;
+            glm::vec3 reflectionDirection = glm::normalize(reflectt(glm::normalize(rayDirection), intersectionTriangle.intersectedTriangle.normal));
+            colour = castRay(reflectionRayOrig, vertices, vertex_normals, triangles, reflectionDirection, brightness);
         }
-        brightness = glm::clamp((brightness/lightsources.size())/2, 0.0f, 1.0f);
+
+    }
+
+    if(!intersectionTriangle.intersectionFound){
+        colour.red = 0;
+        colour.blue = 0;
+        colour.green = 0;
     }
 
     return colour;
@@ -515,6 +524,7 @@ int main(int argc, char *argv[]) {
     vector<glm::vec3> sphere_vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+    //vector<ModelTriangle> triangles = readOBJFile("fox.obj", 0.01, colour_library, vertices, 0.0f);
 
     // Assign glass to red block and mirror to front face of blue box
     for(size_t i = 0; i < triangles.size(); i++){
@@ -522,8 +532,6 @@ int main(int argc, char *argv[]) {
             triangles[i].material = "glass";
         }else if(mirror && (i == 33 || i == 38)){
             triangles[i].material = "mirror";
-        //}else if(mirror && triangles[i].colour.name == "Magenta"){
-        //    triangles[i].material = "mirror";
         }else{
             triangles[i].material = "plastic";
         }

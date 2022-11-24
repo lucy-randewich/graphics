@@ -21,8 +21,8 @@ using namespace std;
 string renderer = "wireframe";
 bool soft_shadows = false;
 bool sphere = false;
-bool mirror = false;
-bool phong = true;
+bool mirror = true;
+bool phong = false;
 bool glass = true;
 vector<glm::vec3> lightsources;
 
@@ -80,7 +80,7 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
                 if (colour.name == " "){
                     colour = Colour("Red", 0xFF, 0x00, 0x00);
                 }
-                face_normal = glm::cross(p0-p2, p1-p2);
+                face_normal = glm::normalize(glm::cross(p0-p2, p1-p2));
                 triangles.push_back(ModelTriangle(p0, p1, p2, colour, face_normal));
                 break;
             case 'u':
@@ -257,22 +257,20 @@ vector<glm::vec3> getVertexNormals(vector<glm::vec3> vertices, vector<ModelTrian
 
     for (glm::vec3 vertex : vertices){
         // Find normals of all triangles which use this vertex
-        vector<glm::vec3> normalsToAverage;
+        glm::vec3 normalsToAverage = glm::vec3(0);
         for (ModelTriangle triangle : triangles){
-            for(glm::vec3 triangleVertex : triangle.vertices){
-                if (vertex == triangleVertex){
-                    normalsToAverage.push_back(triangle.normal);
-                }
+            if (vertex == triangle.vertices[0] || vertex == triangle.vertices[1] || vertex == triangle.vertices[2]){
+                normalsToAverage += triangle.normal;
             }
         }
-        // Average normals of these triangles
-        float count = 0.0f;
-        glm::vec3 sum = {0, 0, 0};
-        for (glm::vec3 normal : normalsToAverage){
-            sum += normal;
-            count ++;
-        }
-        vertex_normals.push_back(glm::normalize(sum/count));
+//        // Average normals of these triangles
+//        float count = 0.0f;
+//        glm::vec3 sum = {0, 0, 0};
+//        for (glm::vec3 normal : normalsToAverage){
+//            sum += normal;
+//            count ++;
+//        }
+        vertex_normals.push_back(glm::normalize(normalsToAverage));
     }
     return vertex_normals;
 }
@@ -304,6 +302,25 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
     return closestIntersection;
 }
 
+glm::vec2 bazzaProductionLine(std::array<glm::vec3, 3> vertices, glm::vec3 point) {
+    auto v0 = vertices[2] - vertices[0];
+    auto v1 = vertices[2] - vertices[1];
+    auto v2 = point - vertices[2];
+
+    auto d00 = glm::dot(v0, v0);
+    auto d01 = glm::dot(v0, v1);
+    auto d11 = glm::dot(v1, v1);
+    auto d20 = glm::dot(v2, v0);
+    auto d21 = glm::dot(v2, v1);
+
+    auto scela = d00 * d11 - d01 * d01;
+
+    return {
+        (d11 * d20 - d01 * d21) / scela,
+        (d00 * d21 - d01 * d20) / scela
+    };
+}
+
 glm::vec3 getNormal(RayTriangleIntersection intersectionTriangle, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals){
     // Get three normals of vertices of intersected triangle
     glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
@@ -324,7 +341,10 @@ glm::vec3 getNormal(RayTriangleIntersection intersectionTriangle, vector<glm::ve
     float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
     float proportion_n1 = intersectionTriangle.u;
     float proportion_n2 = intersectionTriangle.v;
-    glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
+
+    auto bigBazzaVals = bazzaProductionLine(intersectionTriangle.intersectedTriangle.vertices, intersectionTriangle.intersectionPoint);
+
+    glm::vec3 normal = glm::normalize((1 - bigBazzaVals.x - bigBazzaVals.y * n2) + (bigBazzaVals.x * n0) + (bigBazzaVals.y * n1));
     return normal;
 }
 
@@ -412,8 +432,16 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
         brightness = glm::clamp(brightness/lightsources.size(), 0.2f, 1.0f);
 
         if(intersectionTriangle.intersectedMaterial == "mirror"){
-            glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
-            colour = castRay(intersectionTriangle.intersectionPoint, vertices, vertex_normals, triangles, reflected_ray, brightness);
+            auto speckalNorm = (getNormal(intersectionTriangle, vertices, vertex_normals));
+
+//            glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
+//            glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(speckalNorm)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(speckalNorm)));
+
+            auto refwectWay = glm::normalize(glm::normalize(rayDirection) - (2 * glm::dot(glm::normalize(rayDirection), speckalNorm) * speckalNorm));
+
+            intersectionTriangle.intersectionPoint += (refwectWay + speckalNorm) * 0.1;
+
+            colour = castRay(intersectionTriangle.intersectionPoint, vertices, vertex_normals, triangles, refwectWay, brightness);
         }
 
         if(intersectionTriangle.intersectedMaterial == "glass"){

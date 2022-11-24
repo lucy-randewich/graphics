@@ -12,9 +12,10 @@
 #include <sstream>
 #include <math.h>
 #include <thread>
+#include <future>
 
-#define WIDTH (320.0f)*3.0f
-#define HEIGHT (240.0f)*3.0f
+#define WIDTH (320.0f)
+#define HEIGHT (240.0f)
 #define FOCAL_LENGTH 2.0f
 #define SCALER WIDTH
 
@@ -389,68 +390,63 @@ void fresnel(const glm::vec3 &I, const glm::vec3 &N, const float &ior, float &kr
     }
 }
 
-glm::vec3 reflectt(const glm::vec3 &I, const glm::vec3 &N)
-{
+glm::vec3 reflectt(const glm::vec3 &I, const glm::vec3 &N){
     return I - 2 * glm::dot(I, N)* N;
 }
 
-Colour castRay(glm::vec3 startPoint, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals, vector<ModelTriangle> &triangles, glm::vec3 rayDirection, float &brightness){
+Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals, vector<ModelTriangle> triangles, glm::vec3 rayDirection, float &brightness){
     RayTriangleIntersection intersectionTriangle = getClosestIntersection(startPoint, rayDirection, triangles);
     Colour colour = intersectionTriangle.intersectedTriangle.colour;
-    glm::vec3 normal = getNormal(intersectionTriangle, vertices, vertex_normals);
+    if(intersectionTriangle.intersectionFound){
+        glm::vec3 normal = getNormal(intersectionTriangle, vertices, vertex_normals);
 
-    // Find shadow intersection
-    brightness = 0;
-    for (glm::vec3 light : lightsources){
-        glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
-        float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
-        RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
-        if(phong){
-            brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
-        }else{
-            brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
+        // Find shadow intersection
+        brightness = 0;
+        for (glm::vec3 light : lightsources){
+            glm::vec3 lightRay = light - intersectionTriangle.intersectionPoint;
+            float distance = glm::distance(light, intersectionTriangle.intersectionPoint);
+            RayTriangleIntersection shadow_intersection = getClosestIntersection(intersectionTriangle.intersectionPoint, glm::normalize(lightRay), triangles);
+            if(phong){
+                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, normal);
+            }else{
+                brightness += getBrightness(distance, intersectionTriangle, shadow_intersection, light, lightRay, rayDirection, intersectionTriangle.intersectedTriangle.normal);
+            }
         }
-    }
-    brightness = glm::clamp(brightness/lightsources.size(), 0.2f, 1.0f);
+        brightness = glm::clamp(brightness/lightsources.size(), 0.2f, 1.0f);
 
-    if(intersectionTriangle.intersectedMaterial == "mirror"){
-        glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
-        colour = castRay(intersectionTriangle.intersectionPoint, vertices, vertex_normals, triangles, reflected_ray, brightness);
-    }
-
-    if(intersectionTriangle.intersectedMaterial == "glass"){
-
-        float refractive_index = 2.0f;
-
-        bool outside = glm::dot(intersectionTriangle.intersectedTriangle.normal, glm::normalize(rayDirection)) < 0.0f;
-        float kr;
-        fresnel(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index, kr);
-        glm::vec3 bias = 0.0001f * intersectionTriangle.intersectedTriangle.normal;
-        glm::vec3 refractionRayOrig = outside ? intersectionTriangle.intersectionPoint - bias : intersectionTriangle.intersectionPoint + bias;
-
-        if(kr < 1){ // refract
-            glm::vec3 refractionDirection = glm::normalize(refractt(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index));
-            colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, refractionDirection, brightness);
-        }else{  // total internal reflection
-            glm::vec3 reflectionRayOrig = outside ? intersectionTriangle.intersectionPoint + bias : intersectionTriangle.intersectionPoint - bias;
-            glm::vec3 reflectionDirection = glm::normalize(reflectt(glm::normalize(rayDirection), intersectionTriangle.intersectedTriangle.normal));
-            colour = castRay(reflectionRayOrig, vertices, vertex_normals, triangles, reflectionDirection, brightness);
+        if(intersectionTriangle.intersectedMaterial == "mirror"){
+            glm::vec3 reflected_ray = glm::normalize(rayDirection) - (2 * glm::normalize(intersectionTriangle.intersectedTriangle.normal)) * (glm::dot(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal)));
+            colour = castRay(intersectionTriangle.intersectionPoint, vertices, vertex_normals, triangles, reflected_ray, brightness);
         }
 
-    }
+        if(intersectionTriangle.intersectedMaterial == "glass"){
+            float refractive_index = 2.5f;
+            bool outside = glm::dot(intersectionTriangle.intersectedTriangle.normal, glm::normalize(rayDirection)) < 0.0f;
+            float kr;
+            fresnel(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index, kr);
+            glm::vec3 bias = 0.0001f * intersectionTriangle.intersectedTriangle.normal;
+            glm::vec3 refractionRayOrig = outside ? intersectionTriangle.intersectionPoint - bias : intersectionTriangle.intersectionPoint + bias;
 
-    if(!intersectionTriangle.intersectionFound){
-        colour.red = 0;
-        colour.blue = 0;
-        colour.green = 0;
+            if(kr < 1){ // refract
+                glm::vec3 refractionDirection = glm::normalize(refractt(glm::normalize(rayDirection), glm::normalize(intersectionTriangle.intersectedTriangle.normal), refractive_index));
+                colour = castRay(refractionRayOrig, vertices, vertex_normals, triangles, refractionDirection, brightness);
+            }else{  // total internal reflection
+                glm::vec3 reflectionRayOrig = outside ? intersectionTriangle.intersectionPoint + bias : intersectionTriangle.intersectionPoint - bias;
+                glm::vec3 reflectionDirection = glm::normalize(reflectt(glm::normalize(rayDirection), intersectionTriangle.intersectedTriangle.normal));
+                colour = castRay(reflectionRayOrig, vertices, vertex_normals, triangles, reflectionDirection, brightness);
+            }
+        }
     }
 
     return colour;
 }
 
-void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, vector<Colour> &colour_library, vector<ModelTriangle> &triangles, vector<glm::vec3> &lightsources, vector<glm::vec3> &vertices, vector<glm::vec3> &vertex_normals) {
-    for (size_t x = 0; x < window.width; x++){
-        for (size_t y = 0; y < window.height; y++){
+vector<uint32_t> rayTraceObj(glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles, vector<glm::vec3> lightsources, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals, float height_start, float height_end) {
+//    vector<vector<uint32_t>> pixel_colours(WIDTH, vector<uint32_t>(50, 0));
+    vector<uint32_t> pixellyPiels;
+
+    for (size_t y = height_start; y < height_end; y++){
+        for (size_t x = 0; x < WIDTH; x++) {
             // Calculate ray from camera to pixel
             glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
             rayDirection[0] = ((rayDirection[0] - WIDTH/2.0f)/(SCALER*FOCAL_LENGTH));
@@ -459,9 +455,12 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &ca
 
             float brightness = 0;
             Colour colour = castRay(cameraPosition, vertices, vertex_normals, triangles, rayDirection, brightness);
-            window.setPixelColour(x, y, (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness));
+            uint32_t colour_value = (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness);
+            pixellyPiels.push_back(colour_value);
         }
     }
+
+    return pixellyPiels;
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, glm::vec3 &lightsource) {
@@ -524,11 +523,10 @@ int main(int argc, char *argv[]) {
     vector<glm::vec3> sphere_vertices;
     vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
     vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
-    //vector<ModelTriangle> triangles = readOBJFile("fox.obj", 0.01, colour_library, vertices, 0.0f);
 
     // Assign glass to red block and mirror to front face of blue box
     for(size_t i = 0; i < triangles.size(); i++){
-        if(glass && (triangles[i].colour.name == "Red")) {
+        if(glass && (triangles[i].colour.name == "Red")){
             triangles[i].material = "glass";
         }else if(mirror && (i == 33 || i == 38)){
             triangles[i].material = "mirror";
@@ -539,7 +537,10 @@ int main(int argc, char *argv[]) {
 
     if(sphere){
         vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
-        for(ModelTriangle triangle : sphere_triangles){triangles.push_back(triangle);}
+        for(ModelTriangle triangle : sphere_triangles){
+            triangle.material = "plastic";
+            triangles.push_back(triangle);
+        }
         for(glm::vec3 vertex : sphere_vertices){vertices.push_back(vertex);}
     }
 
@@ -554,7 +555,63 @@ int main(int argc, char *argv[]) {
         window.clearPixels();
         if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
         else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
+        else if (renderer == "ray_traced") {
+
+//            std::future<vector<vector<uint32_t>>> t1 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 0, 50);
+//            std::future<vector<vector<uint32_t>>> t2 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 50, 100);
+//            //std::future<vector<vector<uint32_t>>> t3 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 100, 150);
+//            std::future<vector<vector<uint32_t>>> t4 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 150, 155);
+//
+//            vector<vector<uint32_t>> pixel_colours1 = t1.get();
+//            vector<vector<uint32_t>> pixel_colours2 = t2.get();
+//            //vector<vector<uint32_t>> pixel_colours3 = t3.get();
+//            vector<vector<uint32_t>> pixel_colours4 = t4.get();
+//
+//            //vector<vector<uint32_t>> vec = rayTraceObj(cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 0, window.width, 0, window.height);
+//
+//            for (size_t x = 0; x < window.width; x++) {
+//                for (size_t y = 0; y < 50; y++) {
+//                    window.setPixelColour(x, y, pixel_colours1[x][y]);
+//                }
+//            }
+//
+//            for (size_t x = 0; x < window.width; x++) {
+//                for (size_t y = 50; y < 100; y++) {
+//                    window.setPixelColour(x, y, pixel_colours2[x][y-50]);
+//                }
+//            }
+///*
+//            for (size_t x = 0; x < window.width; x++) {
+//                for (size_t y = 100; y < 150; y++) {
+//                    window.setPixelColour(x, y, pixel_colours3[x][y-100]);
+//                }
+//            }
+//            */
+//            for (size_t x = 0; x < window.width; x++) {
+//                for (size_t y = 150; y < 155; y++) {
+//                    window.setPixelColour(x, y, pixel_colours4[x][y-150]);
+//                }
+//            }
+
+            std::vector<uint32_t> pixelsVectros;
+            std::vector<std::future<std::vector<uint32_t>>> threadyThreads;
+            int cheekyThreadCount = 4;
+
+            for (int i = 0; i < cheekyThreadCount; i++) {
+                threadyThreads.push_back(std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, float(i * HEIGHT / cheekyThreadCount), float((i + 1) * HEIGHT / cheekyThreadCount)));
+            }
+
+            for (auto &cheeckyRef: threadyThreads) {
+                auto pixellyCheecky = cheeckyRef.get();
+                pixelsVectros.insert(pixelsVectros.end(), pixellyCheecky.begin(), pixellyCheecky.end());
+            }
+
+            for (size_t i = 0; i < HEIGHT; i++) {
+                for (size_t xX = 0; xX < WIDTH; xX++) {
+                    window.setPixelColour(i, xX, pixelsVectros[i * WIDTH + xX]);
+                }
+            }
+        }
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

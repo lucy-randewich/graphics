@@ -7,12 +7,9 @@
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <vector>
-#include <iostream>
 #include <string>
 #include <sstream>
 #include <math.h>
-#include <thread>
-#include <future>
 
 #define WIDTH (320.0f)
 #define HEIGHT (240.0f)
@@ -441,12 +438,9 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
     return colour;
 }
 
-vector<uint32_t> rayTraceObj(glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles, vector<glm::vec3> lightsources, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals, float height_start, float height_end) {
-//    vector<vector<uint32_t>> pixel_colours(WIDTH, vector<uint32_t>(50, 0));
-    vector<uint32_t> pixellyPiels;
-
-    for (size_t y = height_start; y < height_end; y++){
-        for (size_t x = 0; x < WIDTH; x++) {
+void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, vector<Colour> colour_library, vector<ModelTriangle> triangles, vector<glm::vec3> lightsources, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals) {
+    for (size_t x = 0; x < window.width; x++){
+        for (size_t y = 0; y < window.height; y++) {
             // Calculate ray from camera to pixel
             glm::vec3 rayDirection = glm::vec3(x, y, -1.0f);
             rayDirection[0] = ((rayDirection[0] - WIDTH/2.0f)/(SCALER*FOCAL_LENGTH));
@@ -456,11 +450,9 @@ vector<uint32_t> rayTraceObj(glm::vec3 cameraPosition, glm::mat3 cameraOrientati
             float brightness = 0;
             Colour colour = castRay(cameraPosition, vertices, vertex_normals, triangles, rayDirection, brightness);
             uint32_t colour_value = (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness);
-            pixellyPiels.push_back(colour_value);
+            window.setPixelColour(x, y, colour_value);
         }
     }
-
-    return pixellyPiels;
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, glm::vec3 &lightsource) {
@@ -555,63 +547,7 @@ int main(int argc, char *argv[]) {
         window.clearPixels();
         if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
         else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") {
-
-//            std::future<vector<vector<uint32_t>>> t1 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 0, 50);
-//            std::future<vector<vector<uint32_t>>> t2 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 50, 100);
-//            //std::future<vector<vector<uint32_t>>> t3 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 100, 150);
-//            std::future<vector<vector<uint32_t>>> t4 = std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 150, 155);
-//
-//            vector<vector<uint32_t>> pixel_colours1 = t1.get();
-//            vector<vector<uint32_t>> pixel_colours2 = t2.get();
-//            //vector<vector<uint32_t>> pixel_colours3 = t3.get();
-//            vector<vector<uint32_t>> pixel_colours4 = t4.get();
-//
-//            //vector<vector<uint32_t>> vec = rayTraceObj(cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, 0, window.width, 0, window.height);
-//
-//            for (size_t x = 0; x < window.width; x++) {
-//                for (size_t y = 0; y < 50; y++) {
-//                    window.setPixelColour(x, y, pixel_colours1[x][y]);
-//                }
-//            }
-//
-//            for (size_t x = 0; x < window.width; x++) {
-//                for (size_t y = 50; y < 100; y++) {
-//                    window.setPixelColour(x, y, pixel_colours2[x][y-50]);
-//                }
-//            }
-///*
-//            for (size_t x = 0; x < window.width; x++) {
-//                for (size_t y = 100; y < 150; y++) {
-//                    window.setPixelColour(x, y, pixel_colours3[x][y-100]);
-//                }
-//            }
-//            */
-//            for (size_t x = 0; x < window.width; x++) {
-//                for (size_t y = 150; y < 155; y++) {
-//                    window.setPixelColour(x, y, pixel_colours4[x][y-150]);
-//                }
-//            }
-
-            std::vector<uint32_t> pixelsVectros;
-            std::vector<std::future<std::vector<uint32_t>>> threadyThreads;
-            int cheekyThreadCount = 4;
-
-            for (int i = 0; i < cheekyThreadCount; i++) {
-                threadyThreads.push_back(std::async(std::launch::async, rayTraceObj, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals, float(i * HEIGHT / cheekyThreadCount), float((i + 1) * HEIGHT / cheekyThreadCount)));
-            }
-
-            for (auto &cheeckyRef: threadyThreads) {
-                auto pixellyCheecky = cheeckyRef.get();
-                pixelsVectros.insert(pixelsVectros.end(), pixellyCheecky.begin(), pixellyCheecky.end());
-            }
-
-            for (size_t i = 0; i < HEIGHT; i++) {
-                for (size_t xX = 0; xX < WIDTH; xX++) {
-                    window.setPixelColour(i, xX, pixelsVectros[i * WIDTH + xX]);
-                }
-            }
-        }
+        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
 
         // Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();

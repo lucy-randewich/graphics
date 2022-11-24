@@ -18,7 +18,7 @@ DEBUG_OPTIONS := -ggdb -g3
 FUSSY_OPTIONS := -Werror -pedantic
 SANITIZER_OPTIONS := -O1 -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer
 SPEEDY_OPTIONS := -Ofast -funsafe-math-optimizations -mcpu=apple-a14
-LINKER_OPTIONS := -stack_size 16777216
+LINKER_OPTIONS :=
 
 # Set up flags
 SDW_COMPILER_FLAGS := -I$(SDW_DIR)

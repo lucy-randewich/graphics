@@ -1,7 +1,7 @@
 #include "RayTriangleIntersection.h"
 
 RayTriangleIntersection::RayTriangleIntersection() = default;
-RayTriangleIntersection::RayTriangleIntersection(const glm::vec3 &point, float distance, float u, float v, const ModelTriangle &triangle, size_t index, bool intersectionFound, std::string intersectedMaterial) :
+RayTriangleIntersection::RayTriangleIntersection(const glm::vec3 &point, float distance, float u, float v, const ModelTriangle &triangle, size_t index, bool intersectionFound, std::string intersectedMaterial, std::string intersectedObject) :
 		intersectionPoint(point),
 		distanceFromCamera(distance),
         u(u),
@@ -9,7 +9,8 @@ RayTriangleIntersection::RayTriangleIntersection(const glm::vec3 &point, float d
 		intersectedTriangle(triangle),
 		triangleIndex(index),
         intersectionFound(intersectionFound),
-        intersectedMaterial(intersectedMaterial){}
+        intersectedMaterial(intersectedMaterial),
+        intersectedObject(intersectedObject){}
 
 std::ostream &operator<<(std::ostream &os, const RayTriangleIntersection &intersection) {
 	os << "Intersection is at [" << intersection.intersectionPoint[0] << "," << intersection.intersectionPoint[1] << "," <<

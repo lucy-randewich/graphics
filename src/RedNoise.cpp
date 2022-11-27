@@ -3,6 +3,8 @@
 #include <CanvasPoint.h>
 #include <Colour.h>
 #include <ModelTriangle.h>
+#include <TextureMap.h>
+#include <TexturePoint.h>
 #include <RayTriangleIntersection.h>
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
@@ -11,8 +13,8 @@
 #include <sstream>
 #include <math.h>
 
-#define WIDTH (320.0f)
-#define HEIGHT (240.0f)
+#define WIDTH (320.0f)*2.0f
+#define HEIGHT (240.0f)*2.0f
 #define FOCAL_LENGTH 2.0f
 #define SCALER WIDTH
 
@@ -24,7 +26,9 @@ bool sphere = true;
 bool mirror = true;
 bool phong = true;
 bool glass = true;
+bool texture = true;
 vector<glm::vec3> lightsources;
+TextureMap textureFile("texture.ppm");
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -90,6 +94,71 @@ vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Col
                         colour = curr_colour;
                     }
                 }
+        }
+    }
+    return triangles;
+}
+
+vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, float shift) {
+    ifstream file(objfile);
+    string character;
+    float x,y,z;
+    string tmpv1, tmpv2, tmpv3;
+    int v1, v2, v3;
+    string line;
+    string colour_name;
+    Colour colour;
+    colour.name = " ";
+    glm::vec3 p0, p1, p2;
+    glm::vec3 face_normal;
+    vector<tuple<float, float>> vertexTextures;
+    vector<ModelTriangle> triangles;
+
+    // Add all vertices to vector and triangles to vector
+    while(getline(file, line)) {
+        istringstream stream(line);
+        stream >> character;
+
+        if(character == "v"){
+            stream >> x >> y >> z;
+            vertices.push_back({(x * scale_factor)+shift, (y * scale_factor)-shift, z * scale_factor});
+        }else if(character == "f"){
+            stream >> tmpv1 >> tmpv2 >> tmpv3;
+            v1 = stoi(tmpv1);
+            v2 = stoi(tmpv2);
+            v3 = stoi(tmpv3);
+
+            p0 = vertices[v1-1];
+            p1 = vertices[v2-1];
+            p2 = vertices[v3-1];
+
+            if (colour.name == " "){
+                colour = Colour("Red", 0xFF, 0x00, 0x00);
+            }
+            face_normal = glm::normalize(glm::cross(p0-p2, p1-p2));
+            ModelTriangle triangle = ModelTriangle(p0, p1, p2, colour, face_normal, "plastic", "box");
+            if(colour.name == "Cobbles"){
+                tuple<float, float> texturepoints1 = vertexTextures[stoi(tmpv1.substr(tmpv1.find("/") + 1))-1];
+                tuple<float, float> texturepoints2 = vertexTextures[stoi(tmpv2.substr(tmpv2.find("/") + 1))-1];
+                tuple<float, float> texturepoints3 = vertexTextures[stoi(tmpv3.substr(tmpv3.find("/") + 1))-1];
+                TexturePoint tp1 = TexturePoint(get<0> (texturepoints1) * textureFile.width, get<1> (texturepoints1) * textureFile.height);
+                TexturePoint tp2 = TexturePoint(get<0> (texturepoints2) * textureFile.width, get<1> (texturepoints2) * textureFile.height);
+                TexturePoint tp3 = TexturePoint(get<0> (texturepoints3) * textureFile.width, get<1> (texturepoints3) * textureFile.height);
+                triangle.texturePoints = {tp1, tp2, tp3};
+                triangle.material = "Cobbles";
+            }
+            triangles.push_back(triangle);
+        }else if(character == "usemtl"){
+            stream >> colour_name;
+            for (Colour curr_colour: colour_library){
+                if (curr_colour.name == colour_name) {
+                    colour = curr_colour;
+                }
+            }
+        }else if(character == "vt"){
+            float vt1, vt2;
+            stream >> vt1 >> vt2;
+            vertexTextures.push_back(make_tuple(vt1, vt2));
         }
     }
     return triangles;
@@ -241,7 +310,6 @@ void rasteriseObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cam
         if(wireframe) strokedTriangle(window, ctriangle, pixel_colour);
         else filledTriangleWithDepth(window, ctriangle, pixel_colour, depth_buffer, cameraPosition);
     }
-    //drawDepth(window, depth_buffer);
 }
 
 void lookAt(glm::vec3 pointToLookAt, glm::mat3 &cameraOrientation, glm::vec3 &cameraPosition) {
@@ -295,6 +363,31 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 &cameraPosition, glm::v
 }
 
 glm::vec3 getNormal(RayTriangleIntersection intersectionTriangle, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals){
+    // Get three normals of vertices of intersected triangle
+    glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
+    glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
+    glm::vec3 v2 = intersectionTriangle.intersectedTriangle.vertices[2];
+    glm::vec3 n0, n1, n2;
+    for(size_t i = 0; i < vertices.size(); i++){
+        if (vertices[i].x == v0.x && vertices[i].y == v0.y && vertices[i].z == v0.z){
+            n0 = vertex_normals[i];
+        }else if(vertices[i].x == v1.x && vertices[i].y == v1.y && vertices[i].z == v1.z){
+            n1 = vertex_normals[i];
+        }else if(vertices[i].x == v2.x && vertices[i].y == v2.y && vertices[i].z == v2.z){
+            n2 = vertex_normals[i];
+        }
+    }
+
+    // Interpolate normal from vertex normals
+    float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
+    float proportion_n1 = intersectionTriangle.u;
+    float proportion_n2 = intersectionTriangle.v;
+
+    glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
+    return normal;
+}
+
+glm::vec3 getBumpedNormal(RayTriangleIntersection intersectionTriangle, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals){
     // Get three normals of vertices of intersected triangle
     glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
     glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
@@ -392,6 +485,10 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
         }
 
+        if(intersectionTriangle.triangleIndex == 3 || intersectionTriangle.triangleIndex == 4){
+            normal = getBumpedNormal(intersectionTriangle, vertices, vertex_normals);
+        }
+
         // Find shadow intersection
         brightness = 0;
         for (glm::vec3 light : lightsources){
@@ -427,6 +524,27 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
                 glm::vec3 reflectionDirection = glm::normalize(reflectt(glm::normalize(rayDirection), normal));
                 colour = castRay(reflectionRayOrig, vertices, vertex_normals, triangles, reflectionDirection, brightness);
             }
+        }
+
+        if(intersectionTriangle.intersectedMaterial == "Cobbles"){
+            float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
+            float proportion1 = intersectionTriangle.u;
+            float proportion2 = intersectionTriangle.v;
+            TexturePoint tp0 = intersectionTriangle.intersectedTriangle.texturePoints[0];
+            TexturePoint tp1 = intersectionTriangle.intersectedTriangle.texturePoints[1];
+            TexturePoint tp2 = intersectionTriangle.intersectedTriangle.texturePoints[2];
+
+            TexturePoint texturePoint;
+            texturePoint.x = (proportion0 * tp0.x) + (proportion1 * tp1.x) + (proportion2 * tp2.x);
+            texturePoint.y = (proportion0 * tp0.y) + (proportion1 * tp1.y) + (proportion2 * tp2.y);
+
+            uint32_t colour_val = textureFile.pixels[floor(texturePoint.x) + (textureFile.width * floor(texturePoint.y))];
+            int red = (colour_val & 0x00FF0000) >> 16;
+            int green = (colour_val & 0x0000FF00) >> 8;
+            int blue = (colour_val & 0x000000FF);
+            colour.red = red;
+            colour.green = green;
+            colour.blue = blue;
         }
     }
 
@@ -508,8 +626,16 @@ int main(int argc, char *argv[]) {
     // Read obj data from files
     vector<glm::vec3> vertices;
     vector<glm::vec3> sphere_vertices;
-    vector<Colour> colour_library = readMTLFile("cornell-box.mtl");
-    vector<ModelTriangle> triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+
+    vector<Colour> colour_library;
+    vector<ModelTriangle> triangles;
+    if(texture){
+        colour_library = readMTLFile("textured-cornell-box.mtl");
+        triangles = readTextureOBJFile("textured-cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+    }else{
+        colour_library = readMTLFile("cornell-box.mtl");
+        triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+    }
 
     // Assign glass to red block and mirror to front face of blue box
     for(size_t i = 0; i < triangles.size(); i++){
@@ -517,7 +643,7 @@ int main(int argc, char *argv[]) {
             triangles[i].material = "glass";
         }else if(mirror && (i == 33 || i == 38)){
             triangles[i].material = "mirror";
-        }else{
+        }else if(triangles[i].material != "Cobbles"){
             triangles[i].material = "plastic";
         }
     }

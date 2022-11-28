@@ -23,15 +23,17 @@ using namespace std;
 string renderer = "wireframe";
 bool soft_shadows = false;
 bool sphere = true;
-bool mirror = false;
+bool mirror = true;
 bool phong = true;
 bool glass = true;
 bool texture = false;
 bool bump = false;
+bool envmap = true;
 vector<glm::vec3> lightsources;
 TextureMap textureFile("map.ppm");
 TextureMap bumpFile("bump-map.ppm");
-TextureMap environmentMap("cube-map.ppm");
+TextureMap environmentMap("spacebox3.ppm");
+vector<vector<uint32_t>> environmentPixelMatrix(environmentMap.width);
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -547,6 +549,28 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
             colour.green = green;
             colour.blue = blue;
         }
+
+        // ENVIRONMENT MAP
+        if(envmap && intersectionTriangle.intersectedObject == "sphere"){
+            brightness = 1;
+            glm::vec3 reflected_ray = glm::normalize(rayDirection)-(2 * glm::normalize(normal))*(glm::dot(glm::normalize(rayDirection), glm::normalize(normal)));
+            float m = 2.0f * sqrt( pow(reflected_ray.x, 2) + pow(reflected_ray.y, 2) + pow(reflected_ray.z +1, 2));
+            float u = ((reflected_ray.x/m) + 0.5f)*environmentMap.width;
+            float v = ((reflected_ray.y/m) + 0.5f)*environmentMap.height;
+
+            // Ensure that u and v lie within environmentMap
+            if(u>environmentMap.width-1)u = environmentMap.width-1;
+            if(v>environmentMap.height-1)v = environmentMap.height-1;
+            if(v<0)v=0;
+            if(u<0)u=0;
+            uint32_t colour_val = environmentPixelMatrix[u][v];
+            int red = (colour_val & 0x00FF0000) >> 16;
+            int green = (colour_val & 0x0000FF00) >> 8;
+            int blue = (colour_val & 0x000000FF);
+            colour.red = red;
+            colour.green = green;
+            colour.blue = blue;
+        }
     }
 
     return colour;
@@ -636,6 +660,39 @@ int main(int argc, char *argv[]) {
     }else{
         colour_library = readMTLFile("cornell-box.mtl");
         triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+    }
+
+    if(envmap){
+        for(int i = 0; i < environmentMap.width; i++){environmentPixelMatrix[i] = vector<uint32_t>(environmentMap.height);}
+        for(int y = 0; y < environmentMap.height; y++){
+            for(int x = 0; x < environmentMap.width; x++){
+                environmentPixelMatrix[x][y] = environmentMap.pixels[y * environmentMap.height + x];
+            }
+        }
+
+        /*
+        float w = environmentMap.width/4.0f;
+        float h = environmentMap.height/4.0f;
+        TextureMap top, left, back, bottom, right, front;
+
+        for(int y = 0; y < environmentMap.height; y++){
+            for(int x = 0; x < window.width; x++){
+                if(x < w*2 && x >= w && y < h){     // Top face
+                    top.pixels.push_back(environmentPixelMatrix[x][y]);
+                }else if(x < w && y < h*2 && y >= h){     // Left face
+                    left.pixels.push_back(environmentPixelMatrix[x][y]);
+                }else if(x < w*2 && x >= w && y < h*2 && y >= h){     // Back face
+                    back.pixels.push_back(environmentPixelMatrix[x][y]);
+                }else if(x < w*2 && x >= w && y < h*3 && y >= h*2){     // Bottom face
+                    bottom.pixels.push_back(environmentPixelMatrix[x][y]);
+                }else if(x < w*3 && x >= w*2 && y < h*2 && y >= h){     // Right face
+                    right.pixels.push_back(environmentPixelMatrix[x][y]);
+                }else if(x < w*4 && x >= w*3 && y < h*2 && y >= h){     // Front face
+                    front.pixels.push_back(environmentPixelMatrix[x][y]);
+                }
+            }
+        }
+         */
     }
 
     // Assign glass to red block and mirror to front face of blue box

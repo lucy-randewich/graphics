@@ -23,12 +23,15 @@ using namespace std;
 string renderer = "wireframe";
 bool soft_shadows = false;
 bool sphere = true;
-bool mirror = true;
+bool mirror = false;
 bool phong = true;
 bool glass = true;
-bool texture = true;
+bool texture = false;
+bool bump = false;
 vector<glm::vec3> lightsources;
-TextureMap textureFile("texture.ppm");
+TextureMap textureFile("map.ppm");
+TextureMap bumpFile("bump-map.ppm");
+TextureMap environmentMap("cube-map.ppm");
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -387,29 +390,13 @@ glm::vec3 getNormal(RayTriangleIntersection intersectionTriangle, vector<glm::ve
     return normal;
 }
 
-glm::vec3 getBumpedNormal(RayTriangleIntersection intersectionTriangle, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals){
-    // Get three normals of vertices of intersected triangle
-    glm::vec3 v0 = intersectionTriangle.intersectedTriangle.vertices[0];
-    glm::vec3 v1 = intersectionTriangle.intersectedTriangle.vertices[1];
-    glm::vec3 v2 = intersectionTriangle.intersectedTriangle.vertices[2];
-    glm::vec3 n0, n1, n2;
-    for(size_t i = 0; i < vertices.size(); i++){
-        if (vertices[i].x == v0.x && vertices[i].y == v0.y && vertices[i].z == v0.z){
-            n0 = vertex_normals[i];
-        }else if(vertices[i].x == v1.x && vertices[i].y == v1.y && vertices[i].z == v1.z){
-            n1 = vertex_normals[i];
-        }else if(vertices[i].x == v2.x && vertices[i].y == v2.y && vertices[i].z == v2.z){
-            n2 = vertex_normals[i];
-        }
-    }
-
-    // Interpolate normal from vertex normals
-    float proportion_n0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
-    float proportion_n1 = intersectionTriangle.u;
-    float proportion_n2 = intersectionTriangle.v;
-
-    glm::vec3 normal = glm::normalize((proportion_n0 * n0) + (proportion_n1 * n1) + (proportion_n2 * n2));
-    return normal;
+glm::vec3 getPerterbedNormal(float x, float y){
+    float F_x = bumpFile.pixels[floor(x+1) + bumpFile.width * floor(y)] - bumpFile.pixels[floor(x) + bumpFile.width * floor(y)];
+    float F_y = bumpFile.pixels[floor(x) + bumpFile.width * floor(y+1)] - bumpFile.pixels[floor(x) + bumpFile.width * floor(y)];
+    float N_x = -F_x/(sqrt(F_x * F_x + F_y * F_y + 1));
+    float N_y = -F_y/(sqrt(F_x * F_x + F_y * F_y + 1));
+    float N_z = 1/(sqrt(F_x * F_x + F_y * F_y + 1));
+    return glm::vec3{N_x, N_y, N_z};
 }
 
 float getBrightness(float &distance, RayTriangleIntersection &intersectionTriangle, RayTriangleIntersection &shadow_intersection, glm::vec3 &lightsource, glm::vec3 &lightRay, glm::vec3 &rayDirection, glm::vec3 &normal){
@@ -485,8 +472,22 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
         }
 
-        if(intersectionTriangle.triangleIndex == 3 || intersectionTriangle.triangleIndex == 4){
-            normal = getBumpedNormal(intersectionTriangle, vertices, vertex_normals);
+        if(bump && (intersectionTriangle.triangleIndex == 3 || intersectionTriangle.triangleIndex == 4)){
+            normal = getNormal(intersectionTriangle, vertices, vertex_normals);
+            // Get barycentric coordinates
+            float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
+            float proportion1 = intersectionTriangle.u;
+            float proportion2 = intersectionTriangle.v;
+            TexturePoint tp0 = intersectionTriangle.intersectedTriangle.texturePoints[0];
+            TexturePoint tp1 = intersectionTriangle.intersectedTriangle.texturePoints[1];
+            TexturePoint tp2 = intersectionTriangle.intersectedTriangle.texturePoints[2];
+
+            float x = (proportion0 * tp0.x) + (proportion1 * tp1.x) + (proportion2 * tp2.x);
+            float y = (proportion0 * tp0.y) + (proportion1 * tp1.y) + (proportion2 * tp2.y);
+
+            glm::vec3 perterbed_normal = getPerterbedNormal(x, y);
+            normal = normal + perterbed_normal;
+            normal = glm::normalize(normal);
         }
 
         // Find shadow intersection
@@ -631,7 +632,7 @@ int main(int argc, char *argv[]) {
     vector<ModelTriangle> triangles;
     if(texture){
         colour_library = readMTLFile("textured-cornell-box.mtl");
-        triangles = readTextureOBJFile("textured-cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
+        triangles = readTextureOBJFile("map-cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
     }else{
         colour_library = readMTLFile("cornell-box.mtl");
         triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
@@ -651,7 +652,7 @@ int main(int argc, char *argv[]) {
     if(sphere){
         vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
         for(ModelTriangle triangle : sphere_triangles){
-            triangle.material = "mirror";
+            triangle.material = "plastic";
             triangle.object = "sphere";
             triangles.push_back(triangle);
         }

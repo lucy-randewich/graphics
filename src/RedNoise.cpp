@@ -22,18 +22,18 @@ using namespace std;
 
 string renderer = "wireframe";
 bool soft_shadows = false;
-bool sphere = true;
-bool mirror = true;
 bool phong = true;
-bool glass = true;
-bool texture = false;
 bool bump = false;
-bool envmap = true;
+bool envmap = false;
 vector<glm::vec3> lightsources;
-TextureMap textureFile("map.ppm");
-TextureMap bumpFile("bump-map.ppm");
+//TextureMap textureFile("map.ppm");
+TextureMap hackspaceTexture("hackspace-logo/texture.ppm");
+TextureMap cobblesTexture("pebbles-texture.ppm");
+TextureMap bumpFile("pebbles-texture.ppm");
 TextureMap environmentMap("spacebox3.ppm");
 vector<vector<uint32_t>> environmentPixelMatrix(environmentMap.width);
+int frameIndex = 0;
+float sphereLocation = -0.3f;
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -52,59 +52,7 @@ void strokedTriangle(DrawingWindow &window, CanvasTriangle triangle, Colour colo
     drawLine(window, triangle.v0(), triangle.v2(), colour);
 }
 
-vector<ModelTriangle> readOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, float shift) {
-    ifstream file(objfile);
-    char character;
-    float x,y,z;
-    string tmpv1, tmpv2, tmpv3;
-    int v1, v2, v3;
-    string line;
-    string colour_name;
-    Colour colour;
-    colour.name = " ";
-    glm::vec3 p0, p1, p2;
-    glm::vec3 face_normal;
-
-    vector<ModelTriangle> triangles;
-
-    // Add all vertices to vector and triangles to vector
-    while(getline(file, line)) {
-        istringstream stream(line);
-        stream >> character;
-        switch (character) {
-            case 'v':
-                stream >> x >> y >> z;
-                vertices.push_back({(x * scale_factor)+shift, (y * scale_factor)-shift, z * scale_factor});
-                break;
-            case 'f':
-                stream >> tmpv1 >> tmpv2 >> tmpv3;
-                v1 = stoi(tmpv1);
-                v2 = stoi(tmpv2);
-                v3 = stoi(tmpv3);
-
-                p0 = vertices[v1-1];
-                p1 = vertices[v2-1];
-                p2 = vertices[v3-1];
-
-                if (colour.name == " "){
-                    colour = Colour("Red", 0xFF, 0x00, 0x00);
-                }
-                face_normal = glm::normalize(glm::cross(p0-p2, p1-p2));
-                triangles.push_back(ModelTriangle(p0, p1, p2, colour, face_normal, "plastic", "box"));
-                break;
-            case 'u':
-                stream >> tmpv1 >> colour_name;
-                for (Colour curr_colour: colour_library){
-                    if (curr_colour.name == colour_name) {
-                        colour = curr_colour;
-                    }
-                }
-        }
-    }
-    return triangles;
-}
-
-vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, float shift) {
+vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, glm::vec3 shift) {
     ifstream file(objfile);
     string character;
     float x,y,z;
@@ -126,7 +74,7 @@ vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vec
 
         if(character == "v"){
             stream >> x >> y >> z;
-            vertices.push_back({(x * scale_factor)+shift, (y * scale_factor)-shift, z * scale_factor});
+            vertices.push_back({(x * scale_factor)+shift.x, (y * scale_factor)+shift.y, (z * scale_factor)+shift.z});
         }else if(character == "f"){
             stream >> tmpv1 >> tmpv2 >> tmpv3;
             v1 = stoi(tmpv1);
@@ -142,7 +90,13 @@ vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vec
             }
             face_normal = glm::normalize(glm::cross(p0-p2, p1-p2));
             ModelTriangle triangle = ModelTriangle(p0, p1, p2, colour, face_normal, "plastic", "box");
-            if(colour.name == "Cobbles"){
+            if(colour.name == "Cobbles" || colour.name == "Leopard"){
+                TextureMap textureFile;
+                if(colour.name == "Cobbles"){
+                    textureFile = cobblesTexture;
+                }else if(colour.name == "Leopard"){
+                    textureFile = hackspaceTexture;
+                }
                 tuple<float, float> texturepoints1 = vertexTextures[stoi(tmpv1.substr(tmpv1.find("/") + 1))-1];
                 tuple<float, float> texturepoints2 = vertexTextures[stoi(tmpv2.substr(tmpv2.find("/") + 1))-1];
                 tuple<float, float> texturepoints3 = vertexTextures[stoi(tmpv3.substr(tmpv3.find("/") + 1))-1];
@@ -150,7 +104,7 @@ vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vec
                 TexturePoint tp2 = TexturePoint(get<0> (texturepoints2) * textureFile.width, get<1> (texturepoints2) * textureFile.height);
                 TexturePoint tp3 = TexturePoint(get<0> (texturepoints3) * textureFile.width, get<1> (texturepoints3) * textureFile.height);
                 triangle.texturePoints = {tp1, tp2, tp3};
-                triangle.material = "Cobbles";
+                triangle.material = colour.name;
             }
             triangles.push_back(triangle);
         }else if(character == "usemtl"){
@@ -196,15 +150,12 @@ vector<Colour> readMTLFile(string mtlfile) {
 
 CanvasPoint getCanvasIntersectionPointWithOrientation(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, glm::vec3 vertexPosition, float focalLength) {
     glm::vec3 projectedVertex = (vertexPosition - cameraPosition) * cameraOrientation;
-    //glm::vec3 projectedVertex = cameraOrientation * (cameraPosition - vertexPosition);
-
     float u = focalLength * -projectedVertex.x/projectedVertex.z;
     float v = focalLength * projectedVertex.y/projectedVertex.z;
     float z = focalLength * projectedVertex.z;
 
     u *= window.width;
     v *= window.width;
-    //z *= window.width;
 
     u += window.width/2.0f;
     v += window.height/2.0f;
@@ -238,7 +189,6 @@ void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, 
         int x = int(round(from.x + (xStepSize * i)));
         int y = int(round(from.y + (yStepSize * i)));
         float point_depth = 1/((1+exp(-(from.depth + (zStepSize * i)))));
-        //float point_depth = 1/((from.depth + (zStepSize * i)));
 
         if(x < window.width && x > 0 && y < window.height && y > 0){
                 if (depth_buffer[x][y] <= point_depth) {
@@ -427,7 +377,7 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
     }
 
     // AMBIENT LIGHTING
-    brightness = glm::clamp(brightness, 0.15f, 1.0f);
+    brightness = glm::clamp(brightness, 0.20f, 1.0f);
 
     return brightness;
 }
@@ -468,13 +418,12 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
     RayTriangleIntersection intersectionTriangle = getClosestIntersection(startPoint, rayDirection, triangles);
     Colour colour = intersectionTriangle.intersectedTriangle.colour;
     if(intersectionTriangle.intersectionFound){
+        // GET NORMAL
         glm::vec3 normal = intersectionTriangle.intersectedTriangle.normal;
-
         if(intersectionTriangle.intersectedObject == "sphere"){
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
         }
-
-        if(bump && (intersectionTriangle.triangleIndex == 3 || intersectionTriangle.triangleIndex == 4)){
+        if(bump && (intersectionTriangle.triangleIndex == 9 || intersectionTriangle.triangleIndex == 10)){
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
             // Get barycentric coordinates
             float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
@@ -506,11 +455,13 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
         }
         brightness = glm::clamp(brightness/lightsources.size(), 0.2f, 1.0f);
 
+        // REFLECTION
         if(intersectionTriangle.intersectedMaterial == "mirror"){
             glm::vec3 reflected_ray = glm::normalize(rayDirection)-(2 * glm::normalize(normal))*(glm::dot(glm::normalize(rayDirection), glm::normalize(normal)));
             colour = castRay(intersectionTriangle.intersectionPoint, vertices, vertex_normals, triangles, reflected_ray, brightness);
         }
 
+        // REFRACTION
         if(intersectionTriangle.intersectedMaterial == "glass"){
             float refractive_index = 2.5f;
             bool outside = glm::dot(normal, glm::normalize(rayDirection)) < 0.0f;
@@ -529,7 +480,17 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
             }
         }
 
+        // TEXTURE
+        TextureMap textureFile;
+        bool applyTexture = false;
         if(intersectionTriangle.intersectedMaterial == "Cobbles"){
+            //textureFile = cobblesTexture;
+            //applyTexture = true;
+        }else if(intersectionTriangle.intersectedMaterial == "Leopard"){
+            textureFile = hackspaceTexture;
+            applyTexture = true;
+        }
+        if(applyTexture){
             float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
             float proportion1 = intersectionTriangle.u;
             float proportion2 = intersectionTriangle.v;
@@ -593,37 +554,75 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
     }
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, glm::vec3 &lightsource) {
-	if (event.type == SDL_KEYDOWN) {
+bool handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, glm::vec3 &lightsource) {
+	bool event_happened = false;
+    if (event.type == SDL_KEYDOWN) {
+        event_happened = true;
         if (event.key.keysym.sym == SDLK_1) renderer = "wireframe";
         else if (event.key.keysym.sym == SDLK_2) renderer = "rasterised";
         else if (event.key.keysym.sym == SDLK_3) renderer = "ray_traced";
-        else if (event.key.keysym.sym == SDLK_SPACE) phong = !phong;
-		else if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.2;
-		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.2;
-		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.2;
-		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] - 0.2;
-        else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] + 0.2;
-        else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] - 0.2;
+        else if (event.key.keysym.sym == SDLK_t) sphereLocation = sphereLocation+0.01;
+        else if (event.key.keysym.sym == SDLK_y) sphereLocation = sphereLocation-0.01;
+		else if (event.key.keysym.sym == SDLK_LEFT) cameraPosition[0] = cameraPosition[0] - 0.05;
+		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.05;
+		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.05;
+		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] - 0.05;
+        else if (event.key.keysym.sym == SDLK_w) cameraPosition[2] = cameraPosition[2] + 0.05;
+        else if (event.key.keysym.sym == SDLK_s) cameraPosition[2] = cameraPosition[2] - 0.05;
         else if (event.key.keysym.sym == SDLK_j) {             // Pan camera (y axis)
-            float theta = glm::radians(2.5);
+            float theta = glm::radians(1.5);
             glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
                                                 0.0, 1.0, 0.0,
                                                 sin(theta), 0.0, cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
         }else if (event.key.keysym.sym == SDLK_l) {            // Tilt camera (x axis)
-            float theta = glm::radians(2.5);
+            float theta = glm::radians(1.5);
             glm::mat3 rotate_matrix = glm::mat3(1, 0, 0,
                                                 0, cos(theta), sin(theta),
                                                 0, -sin(theta), cos(theta));
             cameraPosition = cameraPosition * rotate_matrix;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
         }
-	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
-		window.savePPM("output.ppm");
-		window.saveBMP("output.bmp");
+        ostringstream filename;
+        filename << "images/" << std::setw(5) << std::setfill('0') << frameIndex << ".ppm";
+        window.savePPM(filename.str().c_str());
+        frameIndex++;
 	}
+    return event_happened;
+}
+
+vector<ModelTriangle> getTriangles(vector<glm::vec3> &vertices, float scaleFactor, vector<Colour> colour_library){
+    vector<ModelTriangle> triangles = readTextureOBJFile("submission-box.obj", scaleFactor, colour_library, vertices, glm::vec3(0,0,0));
+
+    // Make back wall a mirror
+    triangles[4].material = "mirror";
+    triangles[3].material = "mirror";
+
+    // Add sphere
+    vector<glm::vec3> sphere_vertices;
+    vector<ModelTriangle> sphere_triangles;
+    cout << sphereLocation << endl;
+    sphere_triangles = readTextureOBJFile("sphere.obj", scaleFactor-0.08f, colour_library, sphere_vertices, glm::vec3(0.2, sphereLocation, 0));
+    for(ModelTriangle triangle : sphere_triangles){
+        triangle.object = "sphere";
+        triangles.push_back(triangle);
+    }
+    for(glm::vec3 vertex : sphere_vertices){vertices.push_back(vertex);}
+
+    // Add hackspace logo
+    vector<glm::vec3> hackspace_vertices;
+    vector<ModelTriangle> hackspace_triangles = readTextureOBJFile("hackspace-logo/logo.obj", 0.0005f, colour_library, hackspace_vertices, glm::vec3(-0.15, -0.22, -0.1));
+    for(ModelTriangle triangle : hackspace_triangles){triangles.push_back(triangle);}
+    for(glm::vec3 vertex : hackspace_vertices){vertices.push_back(vertex);}
+
+    // Add plinth for hackspace logo to sit on
+    vector<glm::vec3> plinth_vertices;
+    vector<ModelTriangle> plinth_triangles = readTextureOBJFile("plinth.obj", scaleFactor+0.05f, colour_library, plinth_vertices, glm::vec3(-0.1, -0.4, -0.2));
+    for(ModelTriangle triangle : plinth_triangles){triangles.push_back(triangle);}
+    for(glm::vec3 vertex : plinth_vertices){vertices.push_back(vertex);}
+
+    return triangles;
 }
 
 int main(int argc, char *argv[]) {
@@ -642,26 +641,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
-                                            0, 1, 0,
-                                            0, 0, 1);
-    float scaleFactor = 0.15;
-    // USE 0.001 scale for hackspace logo model
-
-    // Read obj data from files
-    vector<glm::vec3> vertices;
-    vector<glm::vec3> sphere_vertices;
-
-    vector<Colour> colour_library;
-    vector<ModelTriangle> triangles;
-    if(texture){
-        colour_library = readMTLFile("textured-cornell-box.mtl");
-        triangles = readTextureOBJFile("map-cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
-    }else{
-        colour_library = readMTLFile("cornell-box.mtl");
-        triangles = readOBJFile("cornell-box.obj", scaleFactor, colour_library, vertices, 0.0f);
-    }
-
     if(envmap){
         for(int i = 0; i < environmentMap.width; i++){environmentPixelMatrix[i] = vector<uint32_t>(environmentMap.height);}
         for(int y = 0; y < environmentMap.height; y++){
@@ -669,67 +648,40 @@ int main(int argc, char *argv[]) {
                 environmentPixelMatrix[x][y] = environmentMap.pixels[y * environmentMap.height + x];
             }
         }
-
-        /*
-        float w = environmentMap.width/4.0f;
-        float h = environmentMap.height/4.0f;
-        TextureMap top, left, back, bottom, right, front;
-
-        for(int y = 0; y < environmentMap.height; y++){
-            for(int x = 0; x < window.width; x++){
-                if(x < w*2 && x >= w && y < h){     // Top face
-                    top.pixels.push_back(environmentPixelMatrix[x][y]);
-                }else if(x < w && y < h*2 && y >= h){     // Left face
-                    left.pixels.push_back(environmentPixelMatrix[x][y]);
-                }else if(x < w*2 && x >= w && y < h*2 && y >= h){     // Back face
-                    back.pixels.push_back(environmentPixelMatrix[x][y]);
-                }else if(x < w*2 && x >= w && y < h*3 && y >= h*2){     // Bottom face
-                    bottom.pixels.push_back(environmentPixelMatrix[x][y]);
-                }else if(x < w*3 && x >= w*2 && y < h*2 && y >= h){     // Right face
-                    right.pixels.push_back(environmentPixelMatrix[x][y]);
-                }else if(x < w*4 && x >= w*3 && y < h*2 && y >= h){     // Front face
-                    front.pixels.push_back(environmentPixelMatrix[x][y]);
-                }
-            }
-        }
-         */
     }
 
-    // Assign glass to red block and mirror to front face of blue box
-    for(size_t i = 0; i < triangles.size(); i++){
-        if(glass && (triangles[i].colour.name == "Red")){
-            triangles[i].material = "glass";
-        }else if(mirror && (i == 33 || i == 38)){
-            triangles[i].material = "mirror";
-        }else if(triangles[i].material != "Cobbles"){
-            triangles[i].material = "plastic";
-        }
-    }
+    glm::mat3 cameraOrientation = glm::mat3(1, 0, 0,
+                                            0, 1, 0,
+                                            0, 0, 1);
+    float scaleFactor = 0.15;
 
-    if(sphere){
-        vector<ModelTriangle> sphere_triangles = readOBJFile("sphere.obj", scaleFactor-0.02f, colour_library, sphere_vertices, 0.2f);
-        for(ModelTriangle triangle : sphere_triangles){
-            triangle.material = "plastic";
-            triangle.object = "sphere";
-            triangles.push_back(triangle);
-        }
-        for(glm::vec3 vertex : sphere_vertices){vertices.push_back(vertex);}
-    }
+    vector<Colour> colour_library = readMTLFile("textured-cornell-box.mtl");
 
+    vector<glm::vec3> vertices;
+    vector<ModelTriangle> triangles = getTriangles(vertices, scaleFactor, colour_library);
     vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
 
+    if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
+    else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
+    else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
+    window.renderFrame();
+
     while (true) {
-		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) {
-            handleEvent(event, window, cameraPosition, cameraOrientation, lightsource);
+            bool event_happened = handleEvent(event, window, cameraPosition, cameraOrientation, lightsource);
+            if(event_happened){
+                window.clearPixels();
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+                vector<ModelTriangle> triangles = getTriangles(vertices, scaleFactor, colour_library);
+                vector<glm::vec3> vertexNormals = getVertexNormals(vertices, triangles);
+                if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
+                else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
+                else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
+                window.renderFrame();
+            }
         }
 
-        window.clearPixels();
-        if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
-        else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
-        else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
-
-        // Need to render the frame at the end, or nothing actually gets shown on the screen !
-		window.renderFrame();
 	}
 }

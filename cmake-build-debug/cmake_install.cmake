@@ -1,4 +1,4 @@
-# Install script for directory: /Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics
+# Install script for directory: /Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -45,5 +45,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

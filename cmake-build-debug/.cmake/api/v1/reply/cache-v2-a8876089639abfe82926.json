@@ -55,7 +55,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug"
+			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics/cmake-build-debug"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -515,7 +515,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics"
+			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics"
 		},
 		{
 			"name" : "CMAKE_INSTALL_NAME_TOOL",
@@ -1087,7 +1087,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/cmake-build-debug"
+			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics/cmake-build-debug"
 		},
 		{
 			"name" : "RedNoise_IS_TOP_LEVEL",
@@ -1111,7 +1111,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics"
+			"value" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics"
 		},
 		{
 			"name" : "SDL2_DIR",

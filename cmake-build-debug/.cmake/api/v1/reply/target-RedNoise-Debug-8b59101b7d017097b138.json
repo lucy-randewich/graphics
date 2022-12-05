@@ -132,11 +132,11 @@
 				},
 				{
 					"backtrace" : 6,
-					"path" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/libs/glm-0.9.7.2"
+					"path" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics/libs/glm-0.9.7.2"
 				},
 				{
 					"backtrace" : 7,
-					"path" : "/Users/lucy/OneDrive/Uni/year3/graphics/coursework_v1/graphics/libs/sdw"
+					"path" : "/Users/lucy/OneDrive/Uni/year3/graphics/final_coursework/graphics/libs/sdw"
 				}
 			],
 			"language" : "CXX",

@@ -25,8 +25,5 @@ Kd 0.000000 1.000000 1.000000
 newmtl Cobbles
 Kd 1.000000 1.000000 1.000000
 
-newmtl Grass
-Kd 1.000000 1.000000 1.000000
-
-newmtl Leopard
+newmtl Marble
 Kd 1.000000 1.000000 1.000000

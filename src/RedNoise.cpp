@@ -28,7 +28,8 @@ vector<glm::vec3> lightsources;
 
 TextureMap cobblesTexture("brickwall.ppm");
 TextureMap marbleTexture("marble.ppm");
-TextureMap bumpFile("brickwall-normal.ppm");
+TextureMap normalFile("brickwall-normal.ppm");
+TextureMap bumpFile("brickwall-bump.ppm");
 TextureMap environmentMap("spacebox3.ppm");
 vector<vector<uint32_t>> environmentPixelMatrix(environmentMap.width);
 int frameIndex = 0;
@@ -46,6 +47,7 @@ float changeLocation2 = -0.4;
 float changeLocation3 = -0.35;
 
 int frameIndex2 = 1;
+int frameIndex3 = 1;
 
 void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour colour) {
     float numberOfSteps = max(abs(to.x - from.x), abs(to.y - from.y));
@@ -55,7 +57,9 @@ void drawLine(DrawingWindow &window, CanvasPoint from, CanvasPoint to, Colour co
         float x = from.x + (xStepSize * i);
         float y = from.y + (yStepSize * i);
         if(round(x)<window.width && round(y)<window.height && round(x)>0 && round(y)>0){
-            window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+            if(colour.red != 0 || colour.blue !=0 || colour.green !=0){
+                window.setPixelColour(round(x), round(y), (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+            }
         }
     }
 }
@@ -140,7 +144,6 @@ vector<ModelTriangle> readTextureOBJFile(string objfile, float scale_factor, vec
 vector<ModelTriangle> readTextureOBJFileWallAnimation(string objfile, float scale_factor, vector<Colour> colour_library, vector<glm::vec3> &vertices, glm::vec3 shift) {
     ifstream file(objfile);
     string character;
-    float x,y,z;
     string tmpv1, tmpv2, tmpv3;
     int v1, v2, v3;
     string line;
@@ -159,11 +162,12 @@ vector<ModelTriangle> readTextureOBJFileWallAnimation(string objfile, float scal
         stream >> character;
 
         if(character == "v"){
+            float x, y, z;
             stream >> x >> y >> z;
             if(vertexcount == 2 || vertexcount == 3){
-                y -= (frameIndex2 * 0.05);
-                z -= (frameIndex2 * 0.05);
-                vertices.push_back({(x * scale_factor)+shift.x, (y * scale_factor)+shift.y, (z * scale_factor)+shift.z});
+                float y1 = y - (frameIndex3 * 0.05);
+                float z1 = z - (frameIndex3 * 0.05);
+                vertices.push_back({(x * scale_factor)+shift.x, (y1 * scale_factor)+shift.y, (z1 * scale_factor)+shift.z});
             }else {
                 vertices.push_back({(x * scale_factor) + shift.x, (y * scale_factor) + shift.y, (z * scale_factor) + shift.z});
             }
@@ -286,7 +290,11 @@ void drawLineWithDepth(DrawingWindow &window, CanvasPoint from, CanvasPoint to, 
         if(x < window.width && x > 0 && y < window.height && y > 0){
                 if (depth_buffer[x][y] <= point_depth) {
                     if(x<window.width && y<window.height && x>0 && y>0){
-                        window.setPixelColour(x, y, (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + int(colour.blue));
+                        if(colour.red != 0 || colour.blue !=0 || colour.green !=0) {
+                            window.setPixelColour(x, y,
+                                                  (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) +
+                                                  int(colour.blue));
+                        }
                     }
                     depth_buffer[x][y] = point_depth;
                 }
@@ -510,7 +518,7 @@ glm::vec3 reflectt(const glm::vec3 &I, const glm::vec3 &N){
 }
 
 glm::vec3 getBumpedNormal(float x, float y){
-    int pixel = bumpFile.pixels[round(x) + bumpFile.width * round(y)];
+    int pixel = normalFile.pixels[round(x) + normalFile.width * round(y)];
     int red = (pixel & 0x00FF0000) >> 16;
     int green = (pixel & 0x0000FF00) >> 8;
     int blue = (pixel & 0x000000FF);
@@ -519,47 +527,50 @@ glm::vec3 getBumpedNormal(float x, float y){
 
 Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec3> vertex_normals, vector<ModelTriangle> triangles, glm::vec3 rayDirection, float &brightness, int depth){
     if (depth > 5) return Colour(0, 0, 0);
+
+    // ANIMATION
     RayTriangleIntersection intersectionTriangle = getClosestIntersection(startPoint, rayDirection, triangles);
-    if(frameIndex >= 210 && frameIndex <= 240 && intersectionTriangle.intersectedTriangle.colour.name == "Grey"){
+    if(frameIndex >= 210 && frameIndex <= 240 && (intersectionTriangle.intersectedTriangle.colour.name == "Grey" || intersectionTriangle.intersectedMaterial == "Cobbles")){
         intersectionTriangle = getClosestIntersection(intersectionTriangle.intersectionPoint, rayDirection, triangles);
     }
+
     Colour colour = intersectionTriangle.intersectedTriangle.colour;
+
     if(intersectionTriangle.intersectionFound){
-        // GET NORMAL
         glm::vec3 normal = intersectionTriangle.intersectedTriangle.normal;
+
+        // INTERPOLATED NORMAL
         if(intersectionTriangle.intersectedObject == "sphere"){
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
         }
-        if(intersectionTriangle.intersectedMaterial == "Cobbles"){
+
+        // NORMAL MAPPED NORMAL
+        if(intersectionTriangle.intersectedMaterial == "Cobbles") {
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
-            // Get barycentric coordinates
             float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
             float proportion1 = intersectionTriangle.u;
             float proportion2 = intersectionTriangle.v;
             TexturePoint tp0 = intersectionTriangle.intersectedTriangle.texturePoints[0];
             TexturePoint tp1 = intersectionTriangle.intersectedTriangle.texturePoints[1];
             TexturePoint tp2 = intersectionTriangle.intersectedTriangle.texturePoints[2];
-
             float x = (proportion0 * tp0.x) + (proportion1 * tp1.x) + (proportion2 * tp2.x);
             float y = (proportion0 * tp0.y) + (proportion1 * tp1.y) + (proportion2 * tp2.y);
-
             glm::vec3 perterbed_normal = getBumpedNormal(x, y);
-            normal = perterbed_normal;
+            normal = normal + perterbed_normal;
             normal = glm::normalize(normal);
         }
-        if(bump && (intersectionTriangle.triangleIndex == 3 || intersectionTriangle.triangleIndex == 4)){
+
+        // BUMP MAPPED NORMAL
+        if(bump && intersectionTriangle.intersectedMaterial == "Cobbles"){
             normal = getNormal(intersectionTriangle, vertices, vertex_normals);
-            // Get barycentric coordinates
             float proportion0 = 1 - (intersectionTriangle.u + intersectionTriangle.v);
             float proportion1 = intersectionTriangle.u;
             float proportion2 = intersectionTriangle.v;
             TexturePoint tp0 = intersectionTriangle.intersectedTriangle.texturePoints[0];
             TexturePoint tp1 = intersectionTriangle.intersectedTriangle.texturePoints[1];
             TexturePoint tp2 = intersectionTriangle.intersectedTriangle.texturePoints[2];
-
             float x = (proportion0 * tp0.x) + (proportion1 * tp1.x) + (proportion2 * tp2.x);
             float y = (proportion0 * tp0.y) + (proportion1 * tp1.y) + (proportion2 * tp2.y);
-
             glm::vec3 perterbed_normal = getPerterbedNormal(x, y);
             normal = normal + perterbed_normal;
             normal = glm::normalize(normal);
@@ -624,7 +635,7 @@ Colour castRay(glm::vec3 startPoint, vector<glm::vec3> vertices, vector<glm::vec
         if(intersectionTriangle.intersectedMaterial == "Marble"){
             textureFile = marbleTexture;
             applyTexture = true;
-        }else if(intersectionTriangle.intersectedMaterial == "Cobbles"){
+        }else if(intersectionTriangle.intersectedMaterial == "Cobbles" && frameIndex >= 210){
             textureFile = cobblesTexture;
             applyTexture = true;
         }
@@ -688,7 +699,9 @@ void rayTraceObj(DrawingWindow &window, glm::vec3 cameraPosition, glm::mat3 came
             Colour colour = castRay(cameraPosition, vertices, vertex_normals, triangles, rayDirection, brightness, 0);
             uint32_t colour_value = (255 << 24) + (int(colour.red * brightness) << 16) + (int(colour.green * brightness) << 8) + int(colour.blue * brightness);
             if(x<window.width && y<window.height && x>0 && y>0){
-                window.setPixelColour(x, y, colour_value);
+                if(colour.red != 0 || colour.blue !=0 || colour.green !=0) {
+                    window.setPixelColour(x, y, colour_value);
+                }
             }
         }
     }
@@ -705,6 +718,7 @@ bool handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
 		else if (event.key.keysym.sym == SDLK_RIGHT) cameraPosition[0] = cameraPosition[0] + 0.1;
 		else if (event.key.keysym.sym == SDLK_UP) cameraPosition[1] = cameraPosition[1] + 0.1;
 		else if (event.key.keysym.sym == SDLK_DOWN) cameraPosition[1] = cameraPosition[1] - 0.1;
+        else if(event.key.keysym.sym == SDLK_SPACE) frameIndex++;
         else if (event.key.keysym.sym == SDLK_w) {
             cameraPosition[2] = cameraPosition[2] + 0.05;
             lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
@@ -857,7 +871,7 @@ vector<ModelTriangle> getScene2Triangles2(vector<glm::vec3> &vertices, float sca
 }
 
 vector<ModelTriangle> getScene2Triangles3(vector<glm::vec3> &vertices, float scaleFactor, vector<Colour> colour_library, string scene){
-    vector<ModelTriangle> triangles = readTextureOBJFileWallAnimation("submission-box-scene3.obj", scaleFactor, colour_library, vertices, glm::vec3(0,0,0));
+    vector<ModelTriangle> triangles = readTextureOBJFileWallAnimation(scene, scaleFactor, colour_library, vertices, glm::vec3(0,0,0));
 
     // Add plinth for glass ball
     vector<glm::vec3> plinth_vertices1;
@@ -917,7 +931,6 @@ vector<ModelTriangle> getScene2Triangles3(vector<glm::vec3> &vertices, float sca
     return triangles;
 }
 
-
 int main(int argc, char *argv[]) {
     DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
@@ -976,76 +989,18 @@ int main(int argc, char *argv[]) {
     else if (renderer == "ray_traced") rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles, lightsources, vertices, vertexNormals);
     window.renderFrame();
 
-    frameIndex = 
-
-    while(true){
-    //while (frameIndex <= 554) {
+    //while(true){
+    while (frameIndex <= 600) {
         if (window.pollForInputEvents(event)) {
             bool event_happened = handleEvent(event, window, cameraPosition, cameraOrientation, lightsource);
         }else{
             window.clearPixels();
 
-            //if(frameIndex == 10){renderer = "rasterised";}
-            //if(frameIndex == 17){renderer = "ray_traced";}
-            //if(frameIndex == 356){renderer = "rasterised";}
+            if(frameIndex == 10){renderer = "rasterised";}
+            if(frameIndex == 17){renderer = "ray_traced";}
+            if(frameIndex >= 357){renderer = "poo";}
 
-            if(frameIndex <= 60){
-                cameraPosition[2] = cameraPosition[2] - 0.05;
-                if(sphereLocation <= -0.45 || (numdirchanges %2 != 0 && sphereLocation >= changeLocation)){numdirchanges++;changeLocation-=0.015;sphereDirection *= -1;}
-                if(sphere2Location <= -0.45 || (numdirchanges2 %2 != 0 && sphere2Location >= changeLocation2)){numdirchanges2++;changeLocation2-=0.015;sphere2Direction *= -1;}
-                if(sphere3Location <= -0.45 || (numdirchanges3 %2 != 0 && sphere3Location >= changeLocation3)){numdirchanges3++;changeLocation3-=0.015;sphere3Direction *= -1;}
-                if(sphereLocation >= -0.45 || numdirchanges<=5){sphereLocation += sphereDirection * 0.01;}
-                if(sphere2Location >= -0.45 || numdirchanges2<=5){sphere2Location += sphere2Direction * 0.01;}
-                if(sphere3Location >= -0.45 || numdirchanges3<=5){sphere3Location += sphere3Direction * 0.01;}
-                vertices.clear();
-                triangles.clear();
-                vertexNormals.clear();
-                triangles = getTriangles(vertices, scaleFactor, colour_library);
-                vertexNormals = getVertexNormals(vertices, triangles);
-            }else if(frameIndex >= 61 && frameIndex <= 100){
-                cameraPosition[2] = cameraPosition[2] + 0.05;
-                vertices.clear();
-                triangles.clear();
-                vertexNormals.clear();
-                triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene2.obj");
-                vertexNormals = getVertexNormals(vertices, triangles);
-            }else if(frameIndex >= 101 && frameIndex <= 356){
-                float theta = glm::radians(-1.4);
-                glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
-                                                    0.0, 1.0, 0.0,
-                                                    sin(theta), 0.0, cos(theta));
-                cameraPosition = cameraPosition * rotate_matrix;
-                lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
-                cameraPosition[0] = cameraPosition[0] - 0.025;
-                vertices.clear();
-                triangles.clear();
-                vertexNormals.clear();
-                if(frameIndex >= 240){
-                    triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene3.obj");
-                }else{
-                    triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene2.obj");
-                }
-                vertexNormals = getVertexNormals(vertices, triangles);
-            }else if(frameIndex > 356 && frameIndex <= 485){
-                vertices.clear();
-                triangles.clear();
-                vertexNormals.clear();
-                triangles = getScene2Triangles3(vertices, scaleFactor, colour_library, "submission-box-scene3.obj");
-                frameIndex2++;
-            }
-            if(frameIndex == 500){
-                vertices.clear();
-                triangles.clear();
-                vertexNormals.clear();
-            }
-            if(frameIndex == 356){
-                cameraOrientation = glm::mat3(1, 0, 0,
-                                              0, 1, 0,
-                                              0, 0, 1);
-                cameraPosition.x = 0;
-                cameraPosition.y = 0;
-            }
-            if(frameIndex > 355 && frameIndex <= 554){
+            if(frameIndex > 401 && frameIndex <= 600){      // Draw wireframe
                 cameraPosition[2] = cameraPosition[2] - 0.01;
                 sphereLocation = -0.1f;
                 sphere2Location = -0.2f;
@@ -1064,9 +1019,73 @@ int main(int argc, char *argv[]) {
                 rasteriseObj(window, cameraPosition + glm::vec3(0, 0, 3), cameraOrientation, colour_library, triangles2, true);
             }
 
+            if(frameIndex <= 60){       // Zoom into scene 1 and bounce balls
+                cameraPosition[2] = cameraPosition[2] - 0.05;
+                if(sphereLocation <= -0.45 || (numdirchanges %2 != 0 && sphereLocation >= changeLocation)){numdirchanges++;changeLocation-=0.015;sphereDirection *= -1;}
+                if(sphere2Location <= -0.45 || (numdirchanges2 %2 != 0 && sphere2Location >= changeLocation2)){numdirchanges2++;changeLocation2-=0.015;sphere2Direction *= -1;}
+                if(sphere3Location <= -0.45 || (numdirchanges3 %2 != 0 && sphere3Location >= changeLocation3)){numdirchanges3++;changeLocation3-=0.015;sphere3Direction *= -1;}
+                if(sphereLocation >= -0.45 || numdirchanges<=5){sphereLocation += sphereDirection * 0.01;}
+                if(sphere2Location >= -0.45 || numdirchanges2<=5){sphere2Location += sphere2Direction * 0.01;}
+                if(sphere3Location >= -0.45 || numdirchanges3<=5){sphere3Location += sphere3Direction * 0.01;}
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+                triangles = getTriangles(vertices, scaleFactor, colour_library);
+                vertexNormals = getVertexNormals(vertices, triangles);
+            }else if(frameIndex >= 61 && frameIndex <= 100){        // Zoom out into scene 2
+                cameraPosition[2] = cameraPosition[2] + 0.05;
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+                if(frameIndex == 100){
+                    triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene3.obj");
+                }else{
+                    triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene2.obj");
+                }
+                vertexNormals = getVertexNormals(vertices, triangles);
+            }else if(frameIndex >= 101 && frameIndex <= 356) {      // Zoom in around scene
+                float theta = glm::radians(-1.4);
+                glm::mat3 rotate_matrix = glm::mat3(cos(theta), 0.0, -sin(theta),
+                                                    0.0, 1.0, 0.0,
+                                                    sin(theta), 0.0, cos(theta));
+                cameraPosition = cameraPosition * rotate_matrix;
+                lookAt(glm::vec3(0, 0, 0), cameraOrientation, cameraPosition);
+                cameraPosition[0] = cameraPosition[0] - 0.025;
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+                triangles = getScene2Triangles2(vertices, scaleFactor, colour_library, "submission-box-scene3.obj");
+                vertexNormals = getVertexNormals(vertices, triangles);
+            }else if(frameIndex >= 357 && frameIndex <= 575){    // Objects lower into ground
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+                triangles = getScene2Triangles3(vertices, scaleFactor, colour_library, "submission-box-scene3.obj");
+                vertexNormals = getVertexNormals(vertices, triangles);
+                rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles,lightsources, vertices, vertexNormals);
+                if(frameIndex >= 470){
+                    frameIndex3++;
+                }else{
+                    frameIndex2++;
+                }
+            }
+            if(frameIndex == 500){      // Remove scene 2 objects as they're out of view
+                vertices.clear();
+                triangles.clear();
+                vertexNormals.clear();
+            }
+            if(frameIndex == 357){      // Center camera before zooming in
+                cameraOrientation = glm::mat3(1, 0, 0,
+                                              0, 1, 0,
+                                              0, 0, 1);
+                cameraPosition.x = 0;
+                cameraPosition.y = 0;
+            }
+
             if(renderer == "wireframe") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, true);
             else if (renderer == "rasterised") rasteriseObj(window, cameraPosition, cameraOrientation, colour_library, triangles, false);
             else if(renderer == "ray_traced") {rayTraceObj(window, cameraPosition, cameraOrientation, colour_library, triangles,lightsources, vertices, vertexNormals);}
+
             window.renderFrame();
 
             ostringstream filename;

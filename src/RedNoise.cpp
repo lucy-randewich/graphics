@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include "glm/ext.hpp"
 #include <vector>
+#include <tuple>
 #include <string>
 #include <sstream>
 #include <math.h>
@@ -486,29 +487,31 @@ float getBrightness(float &distance, RayTriangleIntersection &intersectionTriang
 }
 
 glm::vec3 refractt(const glm::vec3 &I, const glm::vec3 &N, const float &ior){
-    float cosi = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
-    float etai = 1, etat = ior;
+    float cos_i = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
+    float eta_i = 1;
+    float eta_t = ior;
     glm::vec3 n = N;
-    if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; }
-    float eta = etai / etat;
-    float k = 1 - eta * eta * (1 - cosi * cosi);
-    glm::vec3 direction =  k < 0 ? glm::vec3(0,0,0) : eta * I + (eta * cosi - sqrtf(k)) * n;
+    if (cos_i < 0) { cos_i = -cos_i; } else { std::swap(eta_i, eta_t); n= -N; }
+    float eta = eta_i / eta_t;
+    float k = 1 - eta * eta * (1 - cos_i * cos_i);
+    glm::vec3 direction =  k < 0 ? glm::vec3(0,0,0) : eta * I + (eta * cos_i - sqrtf(k)) * n;
     return direction;
 }
 
 void fresnel(const glm::vec3 &I, const glm::vec3 &N, const float &ior, float &kr){
-    float cosi = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
-    float etai = 1, etat = ior;
-    if (cosi > 0) { std::swap(etai, etat); }
-    float sint = etai / etat * sqrtf(max(0.f, 1 - cosi * cosi));
+    float cos_i = glm::clamp(glm::dot(I, N), -1.0f, 1.0f);
+    float eta_i = 1;
+    float eta_t = ior;
+    if (cos_i > 0) { std::swap(eta_i, eta_t); }
+    float sint = eta_i / eta_t * sqrtf(max(0.f, 1 - cos_i * cos_i));
     if (sint >= 1) {
         kr = 1;
     }
     else {
         float cost = sqrtf(std::max(0.f, 1 - sint * sint));
-        cosi = fabsf(cosi);
-        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
-        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+        cos_i = fabsf(cos_i);
+        float Rs = ((eta_t * cos_i) - (eta_i * cost)) / ((eta_t * cos_i) + (eta_i * cost));
+        float Rp = ((eta_i * cos_i) - (eta_t * cost)) / ((eta_i * cos_i) + (eta_t * cost));
         kr = (Rs * Rs + Rp * Rp) / 2;
     }
 }
@@ -1088,9 +1091,11 @@ int main(int argc, char *argv[]) {
 
             window.renderFrame();
 
+            /*
             ostringstream filename;
             filename << "images/" << std::setw(5) << std::setfill('0') << frameIndex << ".ppm";
             window.savePPM(filename.str().c_str());
+             */
 
             frameIndex++;
         }
